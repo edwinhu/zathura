@@ -18,6 +18,8 @@
 #include <girara/settings.h>
 #include <girara/completion.h>
 #include <girara/utils.h>
+
+#include "girara-compat.h"
 #include <girara/datastructures.h>
 
 static int compare_case_insensitive(const void* data1, const void* data2) {

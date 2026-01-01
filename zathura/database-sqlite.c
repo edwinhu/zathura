@@ -4,6 +4,7 @@
 #include <girara/utils.h>
 #include <girara/datastructures.h>
 #include <girara/input-history.h>
+#include <json-glib/json-glib.h>
 #include <string.h>
 #include <strings.h>
 
@@ -11,7 +12,7 @@
 #include "utils.h"
 
 /* version of the database layout */
-#define DATABASE_VERSION 3
+#define DATABASE_VERSION 5
 
 static char* sqlite3_column_text_dup(sqlite3_stmt* stmt, int col) {
   return g_strdup((const char*)sqlite3_column_text(stmt, col));
@@ -204,8 +205,19 @@ static void sqlite_db_check_layout(sqlite3* session, const int database_version,
   static const char QUICKMARKS_INIT[] = "CREATE TABLE IF NOT EXISTS quickmarks (file TEXT, key INTEGER, x FLOAT, y "
                                         "FLOAT, page INTEGER, zoom FLOAT, PRIMARY KEY(file, key));";
 
+  /* create highlights table */
+  static const char SQL_HIGHLIGHTS_INIT[] = "CREATE TABLE IF NOT EXISTS highlights ("
+                                            "file TEXT,"
+                                            "id TEXT,"
+                                            "page INTEGER,"
+                                            "rects_json TEXT,"
+                                            "color INTEGER,"
+                                            "text TEXT,"
+                                            "created_at INTEGER,"
+                                            "PRIMARY KEY(file, id));";
+
   static const char* ALL_INIT[] = {SQL_BOOKMARK_INIT, SQL_JUMPLIST_INIT, SQL_FILEINFO_INIT, SQL_HISTORY_INIT,
-                                   QUICKMARKS_INIT};
+                                   QUICKMARKS_INIT, SQL_HIGHLIGHTS_INIT};
 
   /* update fileinfo table (part 1) */
   static const char SQL_FILEINFO_ALTER[] = "ALTER TABLE fileinfo ADD COLUMN pages_per_row INTEGER;"
@@ -935,6 +947,208 @@ static girara_list_t* sqlite_get_recent_files(zathura_database_t* db, int max, c
   return list;
 }
 
+static char* rects_to_json(girara_list_t* rects) {
+  if (rects == NULL || girara_list_size(rects) == 0) {
+    return g_strdup("[]");
+  }
+
+  JsonBuilder* builder = json_builder_new();
+  json_builder_begin_array(builder);
+
+  for (size_t i = 0; i < girara_list_size(rects); i++) {
+    zathura_rectangle_t* rect = girara_list_nth(rects, i);
+    if (rect != NULL) {
+      json_builder_begin_object(builder);
+      json_builder_set_member_name(builder, "x1");
+      json_builder_add_double_value(builder, rect->x1);
+      json_builder_set_member_name(builder, "y1");
+      json_builder_add_double_value(builder, rect->y1);
+      json_builder_set_member_name(builder, "x2");
+      json_builder_add_double_value(builder, rect->x2);
+      json_builder_set_member_name(builder, "y2");
+      json_builder_add_double_value(builder, rect->y2);
+      json_builder_end_object(builder);
+    }
+  }
+
+  json_builder_end_array(builder);
+
+  JsonNode* root = json_builder_get_root(builder);
+  JsonGenerator* gen = json_generator_new();
+  json_generator_set_root(gen, root);
+  char* json_str = json_generator_to_data(gen, NULL);
+
+  json_node_unref(root);
+  g_object_unref(gen);
+  g_object_unref(builder);
+
+  return json_str;
+}
+
+static bool sqlite_add_highlight(zathura_database_t* db, const char* file, zathura_highlight_t* highlight) {
+  g_return_val_if_fail(db != NULL && file != NULL && highlight != NULL, false);
+
+  static const char SQL_HIGHLIGHT_ADD[] =
+      "REPLACE INTO highlights (file, id, page, rects_json, color, text, created_at) "
+      "VALUES (?, ?, ?, ?, ?, ?, ?);";
+
+  ZathuraSQLDatabase* sqldb       = ZATHURA_SQLDATABASE(db);
+  ZathuraSQLDatabasePrivate* priv = zathura_sqldatabase_get_instance_private(sqldb);
+
+  sqlite3_stmt* stmt = prepare_statement(priv->session, SQL_HIGHLIGHT_ADD);
+  if (stmt == NULL) {
+    return false;
+  }
+
+  char* rects_json = rects_to_json(highlight->rects);
+
+  if (sqlite3_bind_text(stmt, 1, file, -1, NULL) != SQLITE_OK ||
+      sqlite3_bind_text(stmt, 2, highlight->id, -1, NULL) != SQLITE_OK ||
+      sqlite3_bind_int(stmt, 3, highlight->page) != SQLITE_OK ||
+      sqlite3_bind_text(stmt, 4, rects_json, -1, NULL) != SQLITE_OK ||
+      sqlite3_bind_int(stmt, 5, highlight->color) != SQLITE_OK ||
+      sqlite3_bind_text(stmt, 6, highlight->text, -1, NULL) != SQLITE_OK ||
+      sqlite3_bind_int64(stmt, 7, (sqlite3_int64)highlight->created_at) != SQLITE_OK) {
+    g_free(rects_json);
+    sqlite3_finalize(stmt);
+    girara_error("Failed to bind arguments.");
+    return false;
+  }
+
+  int res = sqlite3_step(stmt);
+  g_free(rects_json);
+  sqlite3_finalize(stmt);
+
+  return (res == SQLITE_DONE) ? true : false;
+}
+
+static bool sqlite_remove_highlight(zathura_database_t* db, const char* file, const char* id) {
+  g_return_val_if_fail(db != NULL && file != NULL && id != NULL, false);
+
+  static const char SQL_HIGHLIGHT_REMOVE[] = "DELETE FROM highlights WHERE file = ? AND id = ?;";
+
+  ZathuraSQLDatabase* sqldb       = ZATHURA_SQLDATABASE(db);
+  ZathuraSQLDatabasePrivate* priv = zathura_sqldatabase_get_instance_private(sqldb);
+
+  sqlite3_stmt* stmt = prepare_statement(priv->session, SQL_HIGHLIGHT_REMOVE);
+  if (stmt == NULL) {
+    return false;
+  }
+
+  if (sqlite3_bind_text(stmt, 1, file, -1, NULL) != SQLITE_OK ||
+      sqlite3_bind_text(stmt, 2, id, -1, NULL) != SQLITE_OK) {
+    sqlite3_finalize(stmt);
+    girara_error("Failed to bind arguments.");
+    return false;
+  }
+
+  int res = sqlite3_step(stmt);
+  sqlite3_finalize(stmt);
+
+  return (res == SQLITE_DONE) ? true : false;
+}
+
+static void highlight_free(void* p) {
+  zathura_highlight_t* highlight = p;
+  zathura_highlight_free(highlight);
+}
+
+static girara_list_t* json_to_rects(const char* json_str) {
+  if (json_str == NULL || *json_str == '\0') {
+    return NULL;
+  }
+
+  girara_list_t* rects = girara_list_new2(g_free);
+  if (rects == NULL) {
+    return NULL;
+  }
+
+  JsonParser* parser = json_parser_new();
+  if (!json_parser_load_from_data(parser, json_str, -1, NULL)) {
+    g_object_unref(parser);
+    return rects;
+  }
+
+  JsonNode* root = json_parser_get_root(parser);
+  if (root == NULL || !JSON_NODE_HOLDS_ARRAY(root)) {
+    g_object_unref(parser);
+    return rects;
+  }
+
+  JsonArray* array = json_node_get_array(root);
+  guint len = json_array_get_length(array);
+
+  for (guint i = 0; i < len; i++) {
+    JsonObject* obj = json_array_get_object_element(array, i);
+    if (obj == NULL) {
+      continue;
+    }
+
+    zathura_rectangle_t* rect = g_try_malloc(sizeof(zathura_rectangle_t));
+    if (rect == NULL) {
+      continue;
+    }
+
+    rect->x1 = json_object_get_double_member(obj, "x1");
+    rect->y1 = json_object_get_double_member(obj, "y1");
+    rect->x2 = json_object_get_double_member(obj, "x2");
+    rect->y2 = json_object_get_double_member(obj, "y2");
+
+    girara_list_append(rects, rect);
+  }
+
+  g_object_unref(parser);
+  return rects;
+}
+
+static girara_list_t* sqlite_load_highlights(zathura_database_t* db, const char* file) {
+  g_return_val_if_fail(db != NULL && file != NULL, NULL);
+
+  static const char SQL_HIGHLIGHT_SELECT[] =
+      "SELECT id, page, rects_json, color, text, created_at FROM highlights WHERE file = ? ORDER BY created_at ASC;";
+
+  ZathuraSQLDatabase* sqldb       = ZATHURA_SQLDATABASE(db);
+  ZathuraSQLDatabasePrivate* priv = zathura_sqldatabase_get_instance_private(sqldb);
+
+  sqlite3_stmt* stmt = prepare_statement(priv->session, SQL_HIGHLIGHT_SELECT);
+  if (stmt == NULL) {
+    return NULL;
+  }
+
+  if (sqlite3_bind_text(stmt, 1, file, -1, NULL) != SQLITE_OK) {
+    sqlite3_finalize(stmt);
+    girara_error("Failed to bind arguments.");
+    return NULL;
+  }
+
+  girara_list_t* result = girara_list_new_with_free(highlight_free);
+  if (result == NULL) {
+    sqlite3_finalize(stmt);
+    return NULL;
+  }
+
+  while (sqlite3_step(stmt) == SQLITE_ROW) {
+    zathura_highlight_t* highlight = g_try_malloc0(sizeof(zathura_highlight_t));
+    if (highlight == NULL) {
+      continue;
+    }
+
+    highlight->id         = sqlite3_column_text_dup(stmt, 0);
+    highlight->page       = sqlite3_column_int(stmt, 1);
+    const char* rects_json = (const char*)sqlite3_column_text(stmt, 2);
+    highlight->rects      = json_to_rects(rects_json);
+    highlight->color      = sqlite3_column_int(stmt, 3);
+    highlight->text       = sqlite3_column_text_dup(stmt, 4);
+    highlight->created_at = (time_t)sqlite3_column_int64(stmt, 5);
+
+    girara_list_append(result, highlight);
+  }
+
+  sqlite3_finalize(stmt);
+
+  return result;
+}
+
 static void zathura_database_interface_init(ZathuraDatabaseInterface* iface) {
   /* initialize interface */
   iface->add_bookmark     = sqlite_add_bookmark;
@@ -947,6 +1161,9 @@ static void zathura_database_interface_init(ZathuraDatabaseInterface* iface) {
   iface->get_recent_files = sqlite_get_recent_files;
   iface->load_quickmarks  = sqlite_load_quickmarks;
   iface->save_quickmarks  = sqlite_save_quickmarks;
+  iface->add_highlight    = sqlite_add_highlight;
+  iface->remove_highlight = sqlite_remove_highlight;
+  iface->load_highlights  = sqlite_load_highlights;
 }
 
 static void io_interface_init(GiraraInputHistoryIOInterface* iface) {

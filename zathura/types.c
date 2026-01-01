@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: Zlib */
 
 #include <stdlib.h>
+#include <time.h>
 #include <girara/datastructures.h>
 #include <glib.h>
 
@@ -119,4 +120,36 @@ void zathura_signature_info_free(zathura_signature_info_t* signature) {
     g_date_time_unref(signature->time);
   }
   g_free(signature);
+}
+
+zathura_highlight_t* zathura_highlight_new(unsigned int page, girara_list_t* rects,
+                                           zathura_highlight_color_t color, const char* text) {
+  zathura_highlight_t* highlight = g_try_malloc0(sizeof(zathura_highlight_t));
+  if (highlight == NULL) {
+    return NULL;
+  }
+
+  /* Generate UUID for id */
+  char* uuid = g_uuid_string_random();
+  highlight->id = uuid;
+  highlight->page = page;
+  highlight->rects = rects;
+  highlight->color = color;
+  highlight->text = text != NULL ? g_strdup(text) : NULL;
+  highlight->created_at = time(NULL);
+
+  return highlight;
+}
+
+void zathura_highlight_free(zathura_highlight_t* highlight) {
+  if (highlight == NULL) {
+    return;
+  }
+
+  g_free(highlight->id);
+  g_free(highlight->text);
+  if (highlight->rects != NULL) {
+    girara_list_free(highlight->rects);
+  }
+  g_free(highlight);
 }

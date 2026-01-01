@@ -17,6 +17,8 @@
 #include <girara/settings.h>
 #include <girara/utils.h>
 #include <json-glib/json-glib.h>
+
+#include "girara-compat.h"
 #include <string.h>
 #include <sys/types.h>
 #include <unistd.h>

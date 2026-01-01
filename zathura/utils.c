@@ -11,6 +11,7 @@
 #include <girara/settings.h>
 #include <girara/utils.h>
 
+#include "girara-compat.h"
 #include "links.h"
 #include "utils.h"
 #include "zathura.h"

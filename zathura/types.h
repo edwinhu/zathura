@@ -332,4 +332,47 @@ struct zathura_mark_s {
 
 typedef struct zathura_mark_s zathura_mark_t;
 
+/**
+ * Highlight color
+ */
+typedef enum zathura_highlight_color_e {
+  ZATHURA_HIGHLIGHT_YELLOW, /**< Yellow highlight */
+  ZATHURA_HIGHLIGHT_GREEN,  /**< Green highlight */
+  ZATHURA_HIGHLIGHT_BLUE,   /**< Blue highlight */
+  ZATHURA_HIGHLIGHT_RED     /**< Red highlight */
+} zathura_highlight_color_t;
+
+/**
+ * Highlight entry
+ */
+struct zathura_highlight_s {
+  char* id;                        /**< Unique identifier */
+  unsigned int page;               /**< Page number (0-indexed) */
+  girara_list_t* rects;            /**< List of zathura_rectangle_t* */
+  zathura_highlight_color_t color; /**< Highlight color */
+  char* text;                      /**< Selected text content */
+  time_t created_at;               /**< Creation timestamp */
+};
+
+typedef struct zathura_highlight_s zathura_highlight_t;
+
+/**
+ * Creates a new highlight
+ *
+ * @param page Page number
+ * @param rects List of selection rectangles (ownership transferred)
+ * @param color Highlight color
+ * @param text Selected text (will be copied)
+ * @return New highlight or NULL on error
+ */
+zathura_highlight_t* zathura_highlight_new(unsigned int page, girara_list_t* rects,
+                                           zathura_highlight_color_t color, const char* text);
+
+/**
+ * Frees a highlight
+ *
+ * @param highlight The highlight to free
+ */
+void zathura_highlight_free(zathura_highlight_t* highlight);
+
 #endif // TYPES_H

@@ -1570,6 +1570,120 @@ bool sc_snap_to_page(girara_session_t* session, girara_argument_t* UNUSED(argume
   return page_set(zathura, page);
 }
 
+bool sc_highlight(girara_session_t* session, girara_argument_t* argument, girara_event_t* UNUSED(event),
+                  unsigned int UNUSED(t)) {
+  g_return_val_if_fail(session != NULL, false);
+  g_return_val_if_fail(session->global.data != NULL, false);
+  zathura_t* zathura = session->global.data;
+
+  if (zathura->document == NULL) {
+    girara_notify(session, GIRARA_WARNING, _("No document opened."));
+    return false;
+  }
+
+  /* Get current page */
+  const unsigned int page_id = zathura_document_get_current_page_number(zathura->document);
+  zathura_page_t* page       = zathura_document_get_page(zathura->document, page_id);
+  if (page == NULL) {
+    return false;
+  }
+
+  GtkWidget* page_widget = zathura_page_get_widget(zathura, page);
+  if (page_widget == NULL) {
+    return false;
+  }
+
+  /* Get selection rectangles */
+  girara_list_t* selection_list = zathura_page_widget_get_selection(ZATHURA_PAGE(page_widget));
+  if (selection_list == NULL || girara_list_size(selection_list) == 0) {
+    girara_notify(session, GIRARA_WARNING, _("No text selected."));
+    return false;
+  }
+
+  /* Copy selection rectangles and compute bounding box for text extraction */
+  girara_list_t* rects_copy = girara_list_new2(g_free);
+  zathura_rectangle_t bounds = {0, 0, 0, 0};
+  bool first = true;
+  for (size_t i = 0; i < girara_list_size(selection_list); i++) {
+    zathura_rectangle_t* rect = girara_list_nth(selection_list, i);
+    zathura_rectangle_t* rect_copy = g_try_malloc(sizeof(zathura_rectangle_t));
+    if (rect_copy != NULL) {
+      *rect_copy = *rect;
+      girara_list_append(rects_copy, rect_copy);
+    }
+    if (first) {
+      bounds = *rect;
+      first  = false;
+    } else {
+      if (rect->x1 < bounds.x1)
+        bounds.x1 = rect->x1;
+      if (rect->y1 < bounds.y1)
+        bounds.y1 = rect->y1;
+      if (rect->x2 > bounds.x2)
+        bounds.x2 = rect->x2;
+      if (rect->y2 > bounds.y2)
+        bounds.y2 = rect->y2;
+    }
+  }
+
+  /* Get selected text */
+  char* text = zathura_page_get_text(page, bounds, NULL);
+
+  /* Determine color from argument */
+  zathura_highlight_color_t color = ZATHURA_HIGHLIGHT_YELLOW;
+  if (argument != NULL) {
+    color = (zathura_highlight_color_t)argument->n;
+  }
+
+  /* Create highlight (takes ownership of rects_copy) */
+  zathura_highlight_t* highlight = zathura_highlight_new(page_id, rects_copy, color, text);
+  g_free(text);
+
+  if (highlight == NULL) {
+    girara_notify(session, GIRARA_ERROR, _("Failed to create highlight."));
+    return false;
+  }
+
+  /* Save to database */
+  const char* file_path = zathura_document_get_path(zathura->document);
+  if (zathura->database != NULL && file_path != NULL) {
+    if (zathura_db_add_highlight(zathura->database, file_path, highlight) == false) {
+      girara_notify(session, GIRARA_ERROR, _("Failed to save highlight."));
+      zathura_highlight_free(highlight);
+      return false;
+    }
+  }
+
+  /* Add highlight to page widget (transfers ownership) */
+  zathura_page_widget_add_highlight(ZATHURA_PAGE(page_widget), highlight);
+
+  /* Clear selection */
+  zathura_page_widget_clear_selection(ZATHURA_PAGE(page_widget));
+
+  /* Notify success */
+  const char* color_names[] = {"yellow", "green", "blue", "red"};
+  girara_notify(session, GIRARA_INFO, _("Highlight created (%s)"), color_names[color]);
+
+  return true;
+}
+
+bool sc_delete_highlight(girara_session_t* session, girara_argument_t* UNUSED(argument), girara_event_t* UNUSED(event),
+                         unsigned int UNUSED(t)) {
+  g_return_val_if_fail(session != NULL, false);
+  g_return_val_if_fail(session->global.data != NULL, false);
+  zathura_t* zathura = session->global.data;
+
+  if (zathura->document == NULL) {
+    girara_notify(session, GIRARA_WARNING, _("No document opened."));
+    return false;
+  }
+
+  /* TODO: Implement highlight deletion - either by cursor position or picker */
+  girara_notify(session, GIRARA_INFO, _("Highlight deletion not yet implemented."));
+
+  return false;
+}
+
 bool sc_file_chooser(girara_session_t* session, girara_argument_t* UNUSED(argument), girara_event_t* UNUSED(event),
                      unsigned int UNUSED(t)) {
   g_return_val_if_fail(session != NULL, false);

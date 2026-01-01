@@ -9,6 +9,7 @@
 #include "render.h"
 #include "marks.h"
 #include "utils.h"
+#include "types.h"
 
 #include <girara/settings.h>
 #include <girara/session.h>
@@ -513,7 +514,14 @@ void config_load_default(zathura_t* zathura) {
   girara_shortcut_add(gsession, 0, 0, "zz", sc_zoom, (mode), ZOOM_SPECIFIC, NULL);                                     \
   girara_shortcut_add(gsession, 0, 0, "zZ", sc_zoom, (mode), ZOOM_SPECIFIC, NULL);                                     \
                                                                                                                        \
-  girara_shortcut_add(gsession, GDK_MOD1_MASK, GDK_KEY_o, NULL, sc_file_chooser, (mode), 0, NULL);
+  girara_shortcut_add(gsession, GDK_MOD1_MASK, GDK_KEY_o, NULL, sc_file_chooser, (mode), 0, NULL);                      \
+                                                                                                                       \
+  /* Highlight shortcuts: h=yellow, H=green, Ctrl-h=blue, Alt-h=red */                                                 \
+  girara_shortcut_add(gsession, 0, GDK_KEY_h, NULL, sc_highlight, (mode), ZATHURA_HIGHLIGHT_YELLOW, NULL);              \
+  girara_shortcut_add(gsession, GDK_SHIFT_MASK, GDK_KEY_h, NULL, sc_highlight, (mode), ZATHURA_HIGHLIGHT_GREEN, NULL);  \
+  girara_shortcut_add(gsession, GDK_CONTROL_MASK, GDK_KEY_h, NULL, sc_highlight, (mode), ZATHURA_HIGHLIGHT_BLUE, NULL); \
+  girara_shortcut_add(gsession, GDK_MOD1_MASK, GDK_KEY_h, NULL, sc_highlight, (mode), ZATHURA_HIGHLIGHT_RED, NULL);     \
+  girara_shortcut_add(gsession, GDK_CONTROL_MASK | GDK_SHIFT_MASK, GDK_KEY_h, NULL, sc_delete_highlight, (mode), 0, NULL);
 
 #define DEFAULT_MOUSE_EVENTS(mode)                                                                                     \
   girara_mouse_event_add(gsession, 0, 0, sc_mouse_scroll, (mode), GIRARA_EVENT_SCROLL_UP, UP, NULL);                   \
@@ -742,6 +750,10 @@ void config_load_default(zathura_t* zathura) {
   girara_argument_mapping_add(gsession, "width",              ZATHURA_ADJUST_WIDTH);
   girara_argument_mapping_add(gsession, "rotate-cw",          ROTATE_CW);
   girara_argument_mapping_add(gsession, "rotate-ccw",         ROTATE_CCW);
+  girara_argument_mapping_add(gsession, "highlight-yellow",   ZATHURA_HIGHLIGHT_YELLOW);
+  girara_argument_mapping_add(gsession, "highlight-green",    ZATHURA_HIGHLIGHT_GREEN);
+  girara_argument_mapping_add(gsession, "highlight-blue",     ZATHURA_HIGHLIGHT_BLUE);
+  girara_argument_mapping_add(gsession, "highlight-red",      ZATHURA_HIGHLIGHT_RED);
   /* clang-format on */
 }
 

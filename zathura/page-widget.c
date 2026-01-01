@@ -64,6 +64,10 @@ typedef struct zathura_page_widget_private_s {
     gboolean retrieved;  /**< True if we already tried to retrieve the list of signatures */
     gboolean draw;       /**< True if links should be drawn */
   } signatures;
+
+  struct {
+    girara_list_t* list; /**< List of persistent highlights on this page */
+  } highlights;
 } ZathuraPagePrivate;
 
 G_DEFINE_TYPE_WITH_CODE(ZathuraPage, zathura_page_widget, GTK_TYPE_DRAWING_AREA, G_ADD_PRIVATE(ZathuraPage))
@@ -232,6 +236,8 @@ static void zathura_page_widget_init(ZathuraPage* widget) {
   priv->signatures.retrieved = false;
   priv->signatures.draw      = false;
 
+  priv->highlights.list = NULL;
+
   const unsigned int event_mask =
       GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK | GDK_POINTER_MOTION_MASK | GDK_LEAVE_NOTIFY_MASK;
   gtk_widget_add_events(GTK_WIDGET(widget), event_mask);
@@ -282,6 +288,10 @@ static void zathura_page_widget_finalize(GObject* object) {
 
   if (priv->links.list != NULL) {
     girara_list_free(priv->links.list);
+  }
+
+  if (priv->highlights.list != NULL) {
+    girara_list_free(priv->highlights.list);
   }
 
   G_OBJECT_CLASS(zathura_page_widget_parent_class)->finalize(object);
@@ -723,6 +733,46 @@ static gboolean zathura_page_widget_draw(GtkWidget* widget, cairo_t* cairo) {
       zathura_rectangle_t rectangle = recalc_rectangle(priv->page, priv->highlighter.bounds);
       cairo_rectangle(cairo, rectangle.x1, rectangle.y1, rectangle.x2 - rectangle.x1, rectangle.y2 - rectangle.y1);
       cairo_fill(cairo);
+    }
+    /* Draw persistent highlights */
+    if (priv->highlights.list != NULL) {
+      for (size_t idx = 0; idx != girara_list_size(priv->highlights.list); ++idx) {
+        zathura_highlight_t* highlight = girara_list_nth(priv->highlights.list, idx);
+        if (highlight == NULL) {
+          continue;
+        }
+        /* Set color based on highlight color */
+        GdkRGBA color;
+        switch (highlight->color) {
+        case ZATHURA_HIGHLIGHT_YELLOW:
+          color = (GdkRGBA){1.0, 0.95, 0.6, 0.4};
+          break;
+        case ZATHURA_HIGHLIGHT_GREEN:
+          color = (GdkRGBA){0.6, 1.0, 0.6, 0.4};
+          break;
+        case ZATHURA_HIGHLIGHT_BLUE:
+          color = (GdkRGBA){0.6, 0.8, 1.0, 0.4};
+          break;
+        case ZATHURA_HIGHLIGHT_RED:
+          color = (GdkRGBA){1.0, 0.6, 0.6, 0.4};
+          break;
+        default:
+          color = priv->zathura->ui.colors.highlight_color;
+          break;
+        }
+        cairo_set_source_rgba(cairo, color.red, color.green, color.blue, color.alpha);
+        /* Draw each rectangle in the highlight */
+        if (highlight->rects != NULL) {
+          for (size_t r = 0; r < girara_list_size(highlight->rects); r++) {
+            zathura_rectangle_t* rect = girara_list_nth(highlight->rects, r);
+            if (rect != NULL) {
+              zathura_rectangle_t rectangle = recalc_rectangle(priv->page, *rect);
+              cairo_rectangle(cairo, rectangle.x1, rectangle.y1, rectangle.x2 - rectangle.x1, rectangle.y2 - rectangle.y1);
+              cairo_fill(cairo);
+            }
+          }
+        }
+      }
     }
   } else {
     girara_debug("rendering loading screen, flicker might be happening");
@@ -1365,4 +1415,55 @@ zathura_page_t* zathura_page_widget_get_page(ZathuraPage* widget) {
   ZathuraPagePrivate* priv = zathura_page_widget_get_instance_private(widget);
 
   return priv->page;
+}
+
+girara_list_t* zathura_page_widget_get_selection(ZathuraPage* widget) {
+  g_return_val_if_fail(ZATHURA_IS_PAGE(widget), NULL);
+  ZathuraPagePrivate* priv = zathura_page_widget_get_instance_private(widget);
+
+  return priv->selection.list;
+}
+
+bool zathura_page_widget_get_selection_bounds(ZathuraPage* widget, zathura_rectangle_t* rect) {
+  g_return_val_if_fail(ZATHURA_IS_PAGE(widget), false);
+  g_return_val_if_fail(rect != NULL, false);
+  ZathuraPagePrivate* priv = zathura_page_widget_get_instance_private(widget);
+
+  if (priv->mouse.selection.x1 < 0 || priv->mouse.selection.y1 < 0) {
+    return false;
+  }
+
+  *rect = priv->mouse.selection;
+  return true;
+}
+
+void zathura_page_widget_set_highlights(ZathuraPage* widget, girara_list_t* highlights) {
+  g_return_if_fail(ZATHURA_IS_PAGE(widget));
+  ZathuraPagePrivate* priv = zathura_page_widget_get_instance_private(widget);
+
+  /* Free old list if exists */
+  if (priv->highlights.list != NULL) {
+    girara_list_free(priv->highlights.list);
+  }
+
+  priv->highlights.list = highlights;
+  zathura_page_widget_redraw_canvas(widget);
+}
+
+static void highlight_free_func(void* data) {
+  zathura_highlight_free(data);
+}
+
+void zathura_page_widget_add_highlight(ZathuraPage* widget, zathura_highlight_t* highlight) {
+  g_return_if_fail(ZATHURA_IS_PAGE(widget));
+  g_return_if_fail(highlight != NULL);
+  ZathuraPagePrivate* priv = zathura_page_widget_get_instance_private(widget);
+
+  /* Create list if it doesn't exist */
+  if (priv->highlights.list == NULL) {
+    priv->highlights.list = girara_list_new2(highlight_free_func);
+  }
+
+  girara_list_append(priv->highlights.list, highlight);
+  zathura_page_widget_redraw_canvas(widget);
 }

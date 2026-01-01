@@ -19,6 +19,8 @@
 #include <glib/gstdio.h>
 #include <glib/gi18n.h>
 
+#include "girara-compat.h"
+
 #ifdef GDK_WINDOWING_WAYLAND
 #include <gdk/gdkwayland.h>
 #endif
@@ -1220,6 +1222,48 @@ bool document_open(zathura_t* zathura, const char* path, const char* uri, const 
 
     /* show widget */
     gtk_widget_show(zathura->pages[page_id]);
+  }
+
+  /* Load persistent highlights from database */
+  if (zathura->database != NULL) {
+    girara_list_t* all_highlights = zathura_db_load_highlights(zathura->database, file_path);
+    if (all_highlights != NULL && girara_list_size(all_highlights) > 0) {
+      /* Create a list for each page */
+      girara_list_t** page_highlights = g_try_malloc0_n(number_of_pages, sizeof(girara_list_t*));
+      if (page_highlights != NULL) {
+        /* Distribute highlights to page lists */
+        for (size_t i = 0; i < girara_list_size(all_highlights); i++) {
+          zathura_highlight_t* hl = girara_list_nth(all_highlights, i);
+          if (hl != NULL && hl->page < number_of_pages) {
+            if (page_highlights[hl->page] == NULL) {
+              page_highlights[hl->page] = girara_list_new();
+            }
+            /* Copy highlight to page list - deep copy the rects list */
+            girara_list_t* rects_copy = girara_list_new2(g_free);
+            for (size_t r = 0; r < girara_list_size(hl->rects); r++) {
+              zathura_rectangle_t* rect = girara_list_nth(hl->rects, r);
+              zathura_rectangle_t* rc = g_malloc(sizeof(zathura_rectangle_t));
+              *rc = *rect;
+              girara_list_append(rects_copy, rc);
+            }
+            zathura_highlight_t* copy = zathura_highlight_new(hl->page, rects_copy, hl->color, hl->text);
+            if (copy != NULL) {
+              g_free(copy->id); /* Free auto-generated ID */
+              copy->id = g_strdup(hl->id);
+              girara_list_append(page_highlights[hl->page], copy);
+            }
+          }
+        }
+        /* Set highlights on page widgets */
+        for (unsigned int i = 0; i < number_of_pages; i++) {
+          if (page_highlights[i] != NULL) {
+            zathura_page_widget_set_highlights(ZATHURA_PAGE(zathura->pages[i]), page_highlights[i]);
+          }
+        }
+        g_free(page_highlights);
+      }
+      girara_list_free(all_highlights);
+    }
   }
 
   /* Set page */

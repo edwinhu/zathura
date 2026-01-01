@@ -10,6 +10,8 @@
 #include <glib-object.h>
 
 #include "bookmarks.h"
+#include "types.h"
+#include <time.h>
 
 typedef struct zathura_fileinfo_s {
   unsigned int current_page;
@@ -57,6 +59,12 @@ struct _ZathuraDatabaseInterface {
   girara_list_t* (*load_quickmarks)(ZathuraDatabase* db, const char* file);
 
   bool (*save_quickmarks)(ZathuraDatabase* db, const char* file, girara_list_t* jumplist);
+
+  bool (*add_highlight)(ZathuraDatabase* db, const char* file, zathura_highlight_t* highlight);
+
+  bool (*remove_highlight)(ZathuraDatabase* db, const char* file, const char* id);
+
+  girara_list_t* (*load_highlights)(ZathuraDatabase* db, const char* file);
 };
 
 GType zathura_database_get_type(void) G_GNUC_CONST;
@@ -162,5 +170,34 @@ bool zathura_db_get_fileinfo(zathura_database_t* db, const char* file, const uin
  * @return list of files
  */
 girara_list_t* zathura_db_get_recent_files(zathura_database_t* db, int max, const char* basepath);
+
+/**
+ * Add a highlight to the database.
+ *
+ * @param db The database instance
+ * @param file The file to which the highlight belongs.
+ * @param highlight The highlight to add.
+ * @return true on success, false otherwise.
+ */
+bool zathura_db_add_highlight(ZathuraDatabase* db, const char* file, zathura_highlight_t* highlight);
+
+/**
+ * Remove a highlight from the database.
+ *
+ * @param db The database instance
+ * @param file The file to which the highlight belongs.
+ * @param id The highlight id to remove.
+ * @return true on success, false otherwise.
+ */
+bool zathura_db_remove_highlight(ZathuraDatabase* db, const char* file, const char* id);
+
+/**
+ * Load all highlights for a file from the database.
+ *
+ * @param db The database instance
+ * @param file The file to load highlights for.
+ * @return List of zathura_highlight_t* or NULL on failure.
+ */
+girara_list_t* zathura_db_load_highlights(ZathuraDatabase* db, const char* file);
 
 #endif // DATABASE_H

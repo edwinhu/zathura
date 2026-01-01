@@ -89,4 +89,37 @@ void zathura_page_widget_abort_render_request(ZathuraPage* widget);
  */
 zathura_page_t* zathura_page_widget_get_page(ZathuraPage* widget);
 
+/**
+ * Get selection rectangles
+ *
+ * @param widget the widget
+ * @return list of selection rectangles or NULL
+ */
+girara_list_t* zathura_page_widget_get_selection(ZathuraPage* widget);
+
+/**
+ * Get selection bounds (mouse selection rectangle)
+ *
+ * @param widget the widget
+ * @param rect output rectangle
+ * @return true if there's a valid selection
+ */
+bool zathura_page_widget_get_selection_bounds(ZathuraPage* widget, zathura_rectangle_t* rect);
+
+/**
+ * Set persistent highlights for this page
+ *
+ * @param widget the widget
+ * @param highlights list of zathura_highlight_t* (ownership NOT transferred)
+ */
+void zathura_page_widget_set_highlights(ZathuraPage* widget, girara_list_t* highlights);
+
+/**
+ * Add a single highlight to this page (takes ownership)
+ *
+ * @param widget the widget
+ * @param highlight the highlight to add (ownership transferred)
+ */
+void zathura_page_widget_add_highlight(ZathuraPage* widget, zathura_highlight_t* highlight);
+
 #endif
