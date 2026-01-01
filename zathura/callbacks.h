@@ -156,6 +156,45 @@ void cb_page_layout_value_changed(girara_session_t* session, const char* name, g
 void cb_index_row_activated(GtkTreeView* tree_view, GtkTreePath* path, GtkTreeViewColumn* column, void* zathura);
 
 /**
+ * Called when a highlight row is activated
+ *
+ * @param tree_view Tree view
+ * @param path Path
+ * @param column Column
+ * @param data Zathura session
+ */
+void cb_highlights_row_activated(GtkTreeView* tree_view, GtkTreePath* path,
+                                  GtkTreeViewColumn* column, void* data);
+
+/**
+ * Called when a key is pressed in the highlights panel
+ *
+ * @param widget The tree view widget
+ * @param event The key press event
+ * @param data Zathura session
+ * @return TRUE if handled, FALSE otherwise
+ */
+gboolean cb_highlights_key_press(GtkWidget* widget, GdkEventKey* event, void* data);
+
+/**
+ * Called when the highlights search text changes
+ *
+ * @param editable The search entry
+ * @param data The filter model
+ */
+void cb_highlights_search_changed(GtkEditable* editable, void* data);
+
+/**
+ * Called when a key is pressed in the highlights search entry
+ *
+ * @param widget The search entry
+ * @param event The key event
+ * @param data The filter model
+ * @return TRUE if handled, FALSE otherwise
+ */
+gboolean cb_highlights_search_key_press(GtkWidget* widget, GdkEventKey* event, void* data);
+
+/**
  * Called when input has been passed to the sc_follow dialog
  *
  * @param entry The dialog inputbar
