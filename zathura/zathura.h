@@ -118,7 +118,10 @@ struct zathura_s {
 
     GtkWidget* view;            /**< Scrolled Window */
     GtkWidget* document_widget; /**< Widget that contains all rendered pages */
-    GtkWidget* index;           /**< Widget to show the index of the document */
+    GtkWidget* index;             /**< Widget to show the index of the document */
+    GtkWidget* highlights;        /**< Widget to show highlights list */
+    GtkWidget* highlights_search; /**< Search entry for highlight filter */
+    GtkWidget* highlights_paned;  /**< Paned container for document + highlights */
   } ui;
 
   struct {
@@ -156,6 +159,7 @@ struct zathura_s {
     girara_mode_t index;        /**< Index mode */
     girara_mode_t insert;       /**< Insert mode */
     girara_mode_t presentation; /**< Presentation mode */
+    girara_mode_t highlights;   /**< Highlights list mode */
   } modes;
 
   struct {

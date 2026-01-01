@@ -248,15 +248,17 @@ void config_load_default(zathura_t* zathura) {
   zathura->modes.index        = girara_mode_add(gsession, "index");
   zathura->modes.insert       = girara_mode_add(gsession, "insert");
   zathura->modes.presentation = girara_mode_add(gsession, "presentation");
+  zathura->modes.highlights   = girara_mode_add(gsession, "highlights");
 
 #define NORMAL zathura->modes.normal
 #define INSERT zathura->modes.insert
 #define INDEX zathura->modes.index
 #define FULLSCREEN zathura->modes.fullscreen
 #define PRESENTATION zathura->modes.presentation
+#define HIGHLIGHTS zathura->modes.highlights
 
   const girara_mode_t all_modes[] = {
-      NORMAL, INSERT, INDEX, FULLSCREEN, PRESENTATION,
+      NORMAL, INSERT, INDEX, FULLSCREEN, PRESENTATION, HIGHLIGHTS,
   };
 
   /* Set default mode */
@@ -521,7 +523,8 @@ void config_load_default(zathura_t* zathura) {
   girara_shortcut_add(gsession, GDK_SHIFT_MASK, GDK_KEY_h, NULL, sc_highlight, (mode), ZATHURA_HIGHLIGHT_GREEN, NULL);  \
   girara_shortcut_add(gsession, GDK_CONTROL_MASK, GDK_KEY_h, NULL, sc_highlight, (mode), ZATHURA_HIGHLIGHT_BLUE, NULL); \
   girara_shortcut_add(gsession, GDK_MOD1_MASK, GDK_KEY_h, NULL, sc_highlight, (mode), ZATHURA_HIGHLIGHT_RED, NULL);     \
-  girara_shortcut_add(gsession, 0, GDK_KEY_x, NULL, sc_delete_highlight, (mode), 0, NULL);
+  girara_shortcut_add(gsession, 0, GDK_KEY_x, NULL, sc_delete_highlight, (mode), 0, NULL);                              \
+  girara_shortcut_add(gsession, 0, GDK_KEY_c, NULL, sc_cycle_highlight_color, (mode), 0, NULL);
 
 #define DEFAULT_MOUSE_EVENTS(mode)                                                                                     \
   girara_mouse_event_add(gsession, 0, 0, sc_mouse_scroll, (mode), GIRARA_EVENT_SCROLL_UP, UP, NULL);                   \
@@ -653,6 +656,7 @@ void config_load_default(zathura_t* zathura) {
   girara_inputbar_command_add(gsession, "blist",      NULL,   cmd_bookmark_list,   NULL,         _("List all bookmarks"));
   girara_inputbar_command_add(gsession, "bjump",      NULL,   cmd_bookmark_open,   cc_bookmarks, _("Jump to bookmark"));
   girara_inputbar_command_add(gsession, "jumplist",   NULL,   cmd_jumplist_list,   NULL,         _("Show recent jumps in jumplist"));
+  girara_inputbar_command_add(gsession, "highlights", NULL,   cmd_highlights,      NULL,         _("List all highlights"));
   girara_inputbar_command_add(gsession, "close",      NULL,   cmd_close,           NULL,         _("Close current file"));
   girara_inputbar_command_add(gsession, "info",       NULL,   cmd_info,            NULL,         _("Show file information"));
   girara_inputbar_command_add(gsession, "exec",       NULL,   cmd_exec,            NULL,         _("Execute a command"));

@@ -261,6 +261,17 @@ bool sc_navigate_index(girara_session_t* session, girara_argument_t* argument, g
 bool sc_toggle_index(girara_session_t* session, girara_argument_t* argument, girara_event_t* event, unsigned int t);
 
 /**
+ * Show/Hide the highlights panel
+ *
+ * @param session The used girara session
+ * @param argument The used argument
+ * @param event Girara event
+ * @param t Number of executions
+ * @return true if no error occurred otherwise false
+ */
+bool sc_toggle_highlights(girara_session_t* session, girara_argument_t* argument, girara_event_t* event, unsigned int t);
+
+/**
  * Toggle multi page mode
  *
  * @param session The used girara session
@@ -382,5 +393,16 @@ bool sc_highlight(girara_session_t* session, girara_argument_t* argument, girara
  * @return true if no error occurred otherwise false
  */
 bool sc_delete_highlight(girara_session_t* session, girara_argument_t* argument, girara_event_t* event, unsigned int t);
+
+/**
+ * Cycle the color of the selected highlight
+ *
+ * @param session The used girara session
+ * @param argument The used argument
+ * @param event Girara event
+ * @param t Number of executions
+ * @return true if no error occurred otherwise false
+ */
+bool sc_cycle_highlight_color(girara_session_t* session, girara_argument_t* argument, girara_event_t* event, unsigned int t);
 
 #endif // SHORTCUTS_H

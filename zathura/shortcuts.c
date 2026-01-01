@@ -8,6 +8,7 @@
 #include <girara/utils.h>
 #include <gtk/gtk.h>
 #include <glib/gi18n.h>
+#include <pango/pango.h>
 
 #include "callbacks.h"
 #include "shortcuts.h"
@@ -1289,6 +1290,221 @@ error_ret:
   return false;
 }
 
+// Fuzzy match function - fzf style
+static gboolean fuzzy_match(const char* pattern, const char* text) {
+  if (pattern == NULL || *pattern == '\0') return TRUE;
+  if (text == NULL) return FALSE;
+
+  const char* p = pattern;
+  const char* t = text;
+  while (*p && *t) {
+    if (g_ascii_tolower(*p) == g_ascii_tolower(*t)) {
+      p++;
+    }
+    t++;
+  }
+  return (*p == '\0');
+}
+
+// Substring match function - case insensitive
+static gboolean substring_match(const char* pattern, const char* text) {
+  if (pattern == NULL || *pattern == '\0') return TRUE;
+  if (text == NULL) return FALSE;
+
+  gchar* lower_text = g_utf8_strdown(text, -1);
+  gchar* lower_pattern = g_utf8_strdown(pattern, -1);
+  gboolean match = (g_strstr_len(lower_text, -1, lower_pattern) != NULL);
+  g_free(lower_text);
+  g_free(lower_pattern);
+  return match;
+}
+
+// Filter function for tree model
+static gboolean highlights_filter_func(GtkTreeModel* model, GtkTreeIter* iter, gpointer data) {
+  GtkEntry* entry = GTK_ENTRY(data);
+  const gchar* search_text = gtk_entry_get_text(entry);
+
+  if (search_text == NULL || *search_text == '\0') {
+    return TRUE;
+  }
+
+  gchar* text = NULL;
+  gtk_tree_model_get(model, iter, 2, &text, -1);  // Column 2 is text
+
+  // Get fuzzy mode flag from the search entry
+  gboolean fuzzy_mode = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(entry), "fuzzy_mode"));
+
+  gboolean visible;
+  if (fuzzy_mode) {
+    visible = fuzzy_match(search_text, text);
+  } else {
+    visible = substring_match(search_text, text);
+  }
+
+  g_free(text);
+  return visible;
+}
+
+bool sc_toggle_highlights(girara_session_t* session, girara_argument_t* UNUSED(argument),
+                          girara_event_t* UNUSED(event), unsigned int UNUSED(t)) {
+  g_return_val_if_fail(session != NULL, false);
+  g_return_val_if_fail(session->global.data != NULL, false);
+  zathura_t* zathura = session->global.data;
+
+  if (zathura->document == NULL) {
+    girara_notify(session, GIRARA_WARNING, _("No document opened."));
+    return false;
+  }
+
+  // If paned exists, toggle visibility of highlights panel
+  if (zathura->ui.highlights_paned != NULL) {
+    gboolean visible = gtk_widget_get_visible(zathura->ui.highlights);
+    if (visible) {
+      // Hide panel
+      gtk_widget_hide(zathura->ui.highlights);
+      gtk_widget_grab_focus(zathura->ui.view);
+    } else {
+      // Show panel and refresh
+      goto refresh_and_show;
+    }
+    return false;
+  }
+
+  // Create highlights panel if doesn't exist
+  if (zathura->ui.highlights == NULL) {
+    // Create container
+    GtkWidget* vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+
+    // Create search entry
+    GtkWidget* search_entry = gtk_entry_new();
+    gtk_entry_set_placeholder_text(GTK_ENTRY(search_entry), "Search [Tab: exact]...");
+    gtk_box_pack_start(GTK_BOX(vbox), search_entry, FALSE, FALSE, 0);
+    zathura->ui.highlights_search = search_entry;
+
+    // Initialize fuzzy mode to TRUE (default to fuzzy matching)
+    g_object_set_data(G_OBJECT(search_entry), "fuzzy_mode", GINT_TO_POINTER(TRUE));
+
+    // Create scrolled window
+    GtkWidget* scrolled = gtk_scrolled_window_new(NULL, NULL);
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scrolled),
+                                    GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
+    gtk_box_pack_start(GTK_BOX(vbox), scrolled, TRUE, TRUE, 0);
+
+    // Create list store: color_str, page_str, text, highlight_ptr
+    GtkListStore* store = gtk_list_store_new(4,
+        G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_POINTER);
+
+    // Create filter model
+    GtkTreeModel* filter = gtk_tree_model_filter_new(GTK_TREE_MODEL(store), NULL);
+    gtk_tree_model_filter_set_visible_func(GTK_TREE_MODEL_FILTER(filter),
+        highlights_filter_func, search_entry, NULL);
+
+    // Create tree view
+    GtkWidget* treeview = gtk_tree_view_new_with_model(filter);
+    gtk_tree_view_set_headers_visible(GTK_TREE_VIEW(treeview), TRUE);
+
+    // Color column
+    GtkCellRenderer* renderer = gtk_cell_renderer_text_new();
+    GtkTreeViewColumn* column = gtk_tree_view_column_new_with_attributes(
+        "Color", renderer, "text", 0, NULL);
+    gtk_tree_view_append_column(GTK_TREE_VIEW(treeview), column);
+
+    // Page column
+    renderer = gtk_cell_renderer_text_new();
+    column = gtk_tree_view_column_new_with_attributes(
+        "Page", renderer, "text", 1, NULL);
+    gtk_tree_view_append_column(GTK_TREE_VIEW(treeview), column);
+
+    // Text column (expand)
+    renderer = gtk_cell_renderer_text_new();
+    g_object_set(renderer, "ellipsize", PANGO_ELLIPSIZE_END, NULL);
+    column = gtk_tree_view_column_new_with_attributes(
+        "Text", renderer, "text", 2, NULL);
+    gtk_tree_view_column_set_expand(column, TRUE);
+    gtk_tree_view_append_column(GTK_TREE_VIEW(treeview), column);
+
+    gtk_container_add(GTK_CONTAINER(scrolled), treeview);
+
+    // Connect signals
+    g_signal_connect(search_entry, "changed",
+        G_CALLBACK(cb_highlights_search_changed), filter);
+    g_signal_connect(search_entry, "key-press-event",
+        G_CALLBACK(cb_highlights_search_key_press), filter);
+    g_signal_connect(treeview, "row-activated",
+        G_CALLBACK(cb_highlights_row_activated), zathura);
+    g_signal_connect(treeview, "key-press-event",
+        G_CALLBACK(cb_highlights_key_press), zathura);
+
+    // Store reference to treeview for key handling
+    g_object_set_data(G_OBJECT(vbox), "treeview", treeview);
+    g_object_set_data(G_OBJECT(vbox), "store", store);
+
+    // Set minimum height for highlights panel
+    gtk_widget_set_size_request(vbox, -1, 150);
+
+    zathura->ui.highlights = vbox;
+  }
+
+  // Create paned container and reparent view
+  if (zathura->ui.highlights_paned == NULL) {
+    GtkWidget* paned = gtk_paned_new(GTK_ORIENTATION_VERTICAL);
+
+    // Get current parent of view and reparent
+    GtkWidget* view_parent = gtk_widget_get_parent(zathura->ui.view);
+    g_object_ref(zathura->ui.view);
+    gtk_container_remove(GTK_CONTAINER(view_parent), zathura->ui.view);
+
+    // Add view to top of paned
+    gtk_paned_pack1(GTK_PANED(paned), zathura->ui.view, TRUE, FALSE);
+    g_object_unref(zathura->ui.view);
+
+    // Add highlights to bottom of paned
+    gtk_paned_pack2(GTK_PANED(paned), zathura->ui.highlights, FALSE, FALSE);
+
+    // Add paned to original parent
+    gtk_container_add(GTK_CONTAINER(view_parent), paned);
+    gtk_widget_show(paned);
+
+    zathura->ui.highlights_paned = paned;
+  }
+
+refresh_and_show:
+  ;  // Empty statement required after label before declaration
+
+  // Populate/refresh the list
+  GtkListStore* store = g_object_get_data(G_OBJECT(zathura->ui.highlights), "store");
+  gtk_list_store_clear(store);
+
+  const char* file_path = zathura_document_get_path(zathura->document);
+  girara_list_t* highlights = zathura_db_load_highlights(zathura->database, file_path);
+
+  if (highlights != NULL) {
+    const char* color_names[] = {"Y", "G", "B", "R"};
+    GIRARA_LIST_FOREACH_BODY(highlights, zathura_highlight_t*, highlight,
+      GtkTreeIter iter;
+      gtk_list_store_append(store, &iter);
+
+      char* page_str = g_strdup_printf("%u", highlight->page + 1);
+      const char* color_str = color_names[highlight->color % 4];
+      const char* text = highlight->text ? highlight->text : "(no text)";
+
+      gtk_list_store_set(store, &iter,
+          0, color_str,
+          1, page_str,
+          2, text,
+          3, highlight,
+          -1);
+      g_free(page_str);
+    );
+  }
+
+  // Show panel and focus search
+  gtk_widget_show_all(zathura->ui.highlights);
+  gtk_widget_grab_focus(zathura->ui.highlights_search);
+
+  return false;
+}
+
 bool sc_toggle_page_mode(girara_session_t* session, girara_argument_t* UNUSED(argument), girara_event_t* UNUSED(event),
                          unsigned int UNUSED(t)) {
   g_return_val_if_fail(session != NULL, false);
@@ -1721,6 +1937,85 @@ bool sc_delete_highlight(girara_session_t* session, girara_argument_t* UNUSED(ar
 
   /* No highlight selected */
   girara_notify(session, GIRARA_WARNING, _("Click on a highlight first, then press x."));
+  return false;
+}
+
+bool sc_cycle_highlight_color(girara_session_t* session, girara_argument_t* UNUSED(argument), girara_event_t* UNUSED(event),
+                              unsigned int UNUSED(t)) {
+  g_return_val_if_fail(session != NULL, false);
+  g_return_val_if_fail(session->global.data != NULL, false);
+  zathura_t* zathura = session->global.data;
+
+  if (zathura->document == NULL) {
+    girara_notify(session, GIRARA_WARNING, _("No document opened."));
+    return false;
+  }
+
+  const unsigned int number_of_pages = zathura_document_get_number_of_pages(zathura->document);
+
+  /* Find page with a selected highlight */
+  for (unsigned int page_id = 0; page_id < number_of_pages; page_id++) {
+    zathura_page_t* page = zathura_document_get_page(zathura->document, page_id);
+    if (page == NULL) {
+      continue;
+    }
+
+    GtkWidget* page_widget = zathura_page_get_widget(zathura, page);
+    if (page_widget == NULL) {
+      continue;
+    }
+
+    /* Check if this page has a selected highlight */
+    const char* selected_id = zathura_page_widget_get_selected_highlight_id(ZATHURA_PAGE(page_widget));
+    if (selected_id == NULL) {
+      continue;
+    }
+
+    /* Found a page with selected highlight - cycle its color */
+    girara_list_t* highlights = zathura_page_widget_get_highlights(ZATHURA_PAGE(page_widget));
+    if (highlights == NULL) {
+      continue;
+    }
+
+    /* Find the highlight by ID and cycle its color */
+    zathura_highlight_t* target_highlight = NULL;
+    GIRARA_LIST_FOREACH_BODY(highlights, zathura_highlight_t*, highlight,
+      if (highlight->id != NULL && g_strcmp0(highlight->id, selected_id) == 0) {
+        target_highlight = highlight;
+        break;
+      }
+    );
+
+    if (target_highlight == NULL) {
+      continue;
+    }
+
+    /* Cycle to next color */
+    zathura_highlight_color_t old_color = target_highlight->color;
+    target_highlight->color = (target_highlight->color + 1) % 4;
+
+    girara_debug("Cycling highlight color from %d to %d", old_color, target_highlight->color);
+
+    /* Update in database */
+    const char* file_path = zathura_document_get_path(zathura->document);
+    if (zathura->database != NULL && file_path != NULL) {
+      if (zathura_db_add_highlight(zathura->database, file_path, target_highlight) == false) {
+        girara_warning("Failed to update highlight color in database");
+      }
+    }
+
+    /* Trigger redraw */
+    gtk_widget_queue_draw(page_widget);
+
+    /* Show notification */
+    const char* color_names[] = {"yellow", "green", "blue", "red"};
+    girara_notify(session, GIRARA_INFO, _("Highlight color changed to %s"), color_names[target_highlight->color]);
+
+    return true;
+  }
+
+  /* No highlight selected */
+  girara_notify(session, GIRARA_WARNING, _("Click on a highlight first, then press c."));
   return false;
 }
 

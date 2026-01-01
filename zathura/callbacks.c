@@ -23,6 +23,7 @@
 #include "adjustment.h"
 #include "synctex.h"
 #include "dbus-interface.h"
+#include "database.h"
 
 gboolean cb_destroy(GtkWidget* UNUSED(widget), zathura_t* zathura) {
   if (zathura_has_document(zathura) == true) {
@@ -351,6 +352,147 @@ void cb_index_row_activated(GtkTreeView* tree_view, GtkTreePath* path, GtkTreeVi
   }
 
   g_object_unref(model);
+}
+
+void cb_highlights_row_activated(GtkTreeView* tree_view, GtkTreePath* path,
+                                  GtkTreeViewColumn* UNUSED(column), void* data) {
+  zathura_t* zathura = data;
+  GtkTreeModel* model = gtk_tree_view_get_model(tree_view);
+  GtkTreeIter iter;
+
+  if (gtk_tree_model_get_iter(model, &iter, path)) {
+    zathura_highlight_t* highlight = NULL;
+    gtk_tree_model_get(model, &iter, 3, &highlight, -1);
+
+    if (highlight != NULL) {
+      // Jump to page (do NOT close panel)
+      page_set(zathura, highlight->page);
+    }
+  }
+}
+
+gboolean cb_highlights_key_press(GtkWidget* widget, GdkEventKey* event, void* data) {
+  zathura_t* zathura = data;
+  GtkTreeView* tree_view = GTK_TREE_VIEW(widget);
+
+  // Handle Escape before selection check (works even with empty list)
+  if (event->keyval == GDK_KEY_Escape) {
+    gtk_widget_hide(zathura->ui.highlights);
+    gtk_widget_grab_focus(zathura->ui.view);
+    return TRUE;
+  }
+
+  // Get selected row
+  GtkTreeSelection* selection = gtk_tree_view_get_selection(tree_view);
+  GtkTreeModel* model;
+  GtkTreeIter iter;
+
+  if (!gtk_tree_selection_get_selected(selection, &model, &iter)) {
+    return FALSE;
+  }
+
+  zathura_highlight_t* highlight = NULL;
+  gtk_tree_model_get(model, &iter, 3, &highlight, -1);
+
+  if (highlight == NULL) {
+    return FALSE;
+  }
+
+  const char* file_path = zathura_document_get_path(zathura->document);
+
+  switch (event->keyval) {
+    case GDK_KEY_d:
+    case GDK_KEY_x: {
+      // Delete highlight
+      char* id_copy = g_strdup(highlight->id);
+      if (zathura_db_remove_highlight(zathura->database, file_path, id_copy)) {
+        // Remove from page widget
+        zathura_page_t* page = zathura_document_get_page(zathura->document, highlight->page);
+        if (page != NULL) {
+          GtkWidget* page_widget = zathura_page_get_widget(zathura, page);
+          if (page_widget != NULL) {
+            zathura_page_widget_remove_highlight(ZATHURA_PAGE(page_widget), id_copy);
+          }
+        }
+        // Refresh panel by hiding and showing
+        gtk_widget_hide(zathura->ui.highlights);
+        sc_toggle_highlights(zathura->ui.session, NULL, NULL, 0);
+        girara_notify(zathura->ui.session, GIRARA_INFO, _("Highlight deleted"));
+      }
+      g_free(id_copy);
+      return TRUE;
+    }
+
+    case GDK_KEY_c: {
+      // Cycle color
+      zathura_highlight_color_t new_color = (highlight->color + 1) % 4;
+      highlight->color = new_color;
+      zathura_db_add_highlight(zathura->database, file_path, highlight);
+
+      // Also update the page widget's highlight
+      zathura_page_t* page = zathura_document_get_page(zathura->document, highlight->page);
+      if (page != NULL) {
+        GtkWidget* page_widget = zathura_page_get_widget(zathura, page);
+        if (page_widget != NULL) {
+          girara_list_t* page_highlights = zathura_page_widget_get_highlights(ZATHURA_PAGE(page_widget));
+          if (page_highlights != NULL) {
+            GIRARA_LIST_FOREACH_BODY(page_highlights, zathura_highlight_t*, h,
+              if (h->id != NULL && highlight->id != NULL && g_strcmp0(h->id, highlight->id) == 0) {
+                h->color = new_color;
+              }
+            );
+          }
+          gtk_widget_queue_draw(page_widget);  // Trigger redraw with new color
+        }
+      }
+
+      // Refresh panel and view
+      gtk_widget_hide(zathura->ui.highlights);
+      sc_toggle_highlights(zathura->ui.session, NULL, NULL, 0);
+      render_all(zathura);
+
+      const char* color_names[] = {"Yellow", "Green", "Blue", "Red"};
+      girara_notify(zathura->ui.session, GIRARA_INFO, _("Color changed to %s"), color_names[new_color]);
+      return TRUE;
+    }
+
+  }
+
+  return FALSE;
+}
+
+void cb_highlights_search_changed(GtkEditable* UNUSED(editable), void* data) {
+  GtkTreeModelFilter* filter = GTK_TREE_MODEL_FILTER(data);
+  gtk_tree_model_filter_refilter(filter);
+}
+
+gboolean cb_highlights_search_key_press(GtkWidget* widget, GdkEventKey* event, void* data) {
+  GtkEntry* entry = GTK_ENTRY(widget);
+  GtkTreeModelFilter* filter = GTK_TREE_MODEL_FILTER(data);
+
+  // Toggle fuzzy/substring mode on Tab key
+  if (event->keyval == GDK_KEY_Tab) {
+    // Get current mode
+    gboolean fuzzy_mode = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(entry), "fuzzy_mode"));
+
+    // Toggle mode
+    fuzzy_mode = !fuzzy_mode;
+    g_object_set_data(G_OBJECT(entry), "fuzzy_mode", GINT_TO_POINTER(fuzzy_mode));
+
+    // Update placeholder text
+    if (fuzzy_mode) {
+      gtk_entry_set_placeholder_text(entry, "Search [Tab: exact]...");
+    } else {
+      gtk_entry_set_placeholder_text(entry, "Search [Tab: fuzzy]...");
+    }
+
+    // Refilter to apply new mode
+    gtk_tree_model_filter_refilter(filter);
+
+    return TRUE;  // Consume the event
+  }
+
+  return FALSE;  // Let other handlers process the event
 }
 
 typedef enum zathura_link_action_e {
