@@ -1678,9 +1678,49 @@ bool sc_delete_highlight(girara_session_t* session, girara_argument_t* UNUSED(ar
     return false;
   }
 
-  /* TODO: Implement highlight deletion - either by cursor position or picker */
-  girara_notify(session, GIRARA_INFO, _("Highlight deletion not yet implemented."));
+  const unsigned int number_of_pages = zathura_document_get_number_of_pages(zathura->document);
 
+  /* Find page with a selected highlight */
+  for (unsigned int page_id = 0; page_id < number_of_pages; page_id++) {
+    zathura_page_t* page = zathura_document_get_page(zathura->document, page_id);
+    if (page == NULL) {
+      continue;
+    }
+
+    GtkWidget* page_widget = zathura_page_get_widget(zathura, page);
+    if (page_widget == NULL) {
+      continue;
+    }
+
+    /* Check if this page has a selected highlight */
+    const char* selected_id = zathura_page_widget_get_selected_highlight_id(ZATHURA_PAGE(page_widget));
+    if (selected_id == NULL) {
+      continue;
+    }
+
+    /* Found a page with selected highlight - delete it */
+    /* Copy ID before clearing selection (which frees it) */
+    char* id_copy = g_strdup(selected_id);
+    girara_debug("Deleting highlight with ID: %s", id_copy);
+
+    const char* file_path = zathura_document_get_path(zathura->document);
+    if (zathura->database != NULL && file_path != NULL) {
+      girara_debug("Removing from database: %s", file_path);
+      zathura_db_remove_highlight(zathura->database, file_path, id_copy);
+    }
+
+    /* Clear selection and remove from widget */
+    zathura_page_widget_clear_selected_highlight(ZATHURA_PAGE(page_widget));
+    bool removed = zathura_page_widget_remove_highlight(ZATHURA_PAGE(page_widget), id_copy);
+    girara_debug("Remove from widget returned: %s", removed ? "true" : "false");
+
+    g_free(id_copy);
+    girara_notify(session, GIRARA_INFO, _("Highlight deleted."));
+    return true;
+  }
+
+  /* No highlight selected */
+  girara_notify(session, GIRARA_WARNING, _("Click on a highlight first, then press x."));
   return false;
 }
 

@@ -122,4 +122,46 @@ void zathura_page_widget_set_highlights(ZathuraPage* widget, girara_list_t* high
  */
 void zathura_page_widget_add_highlight(ZathuraPage* widget, zathura_highlight_t* highlight);
 
+/**
+ * Remove a highlight from this page by ID
+ *
+ * @param widget the widget
+ * @param highlight_id the unique identifier of the highlight to remove
+ * @return true if highlight was found and removed, false otherwise
+ */
+bool zathura_page_widget_remove_highlight(ZathuraPage* widget, const char* highlight_id);
+
+/**
+ * Get highlights for this page
+ *
+ * @param widget the widget
+ * @return list of zathura_highlight_t* or NULL if no highlights
+ */
+girara_list_t* zathura_page_widget_get_highlights(ZathuraPage* widget);
+
+/**
+ * Get last click position (persists after button release)
+ *
+ * @param widget the widget
+ * @param x output x position
+ * @param y output y position
+ * @return true if there's a valid last click position
+ */
+bool zathura_page_widget_get_last_click(ZathuraPage* widget, double* x, double* y);
+
+/**
+ * Get the ID of the currently selected highlight
+ *
+ * @param widget the widget
+ * @return highlight ID or NULL if none selected
+ */
+const char* zathura_page_widget_get_selected_highlight_id(ZathuraPage* widget);
+
+/**
+ * Clear the selected highlight
+ *
+ * @param widget the widget
+ */
+void zathura_page_widget_clear_selected_highlight(ZathuraPage* widget);
+
 #endif

@@ -521,7 +521,7 @@ void config_load_default(zathura_t* zathura) {
   girara_shortcut_add(gsession, GDK_SHIFT_MASK, GDK_KEY_h, NULL, sc_highlight, (mode), ZATHURA_HIGHLIGHT_GREEN, NULL);  \
   girara_shortcut_add(gsession, GDK_CONTROL_MASK, GDK_KEY_h, NULL, sc_highlight, (mode), ZATHURA_HIGHLIGHT_BLUE, NULL); \
   girara_shortcut_add(gsession, GDK_MOD1_MASK, GDK_KEY_h, NULL, sc_highlight, (mode), ZATHURA_HIGHLIGHT_RED, NULL);     \
-  girara_shortcut_add(gsession, GDK_CONTROL_MASK | GDK_SHIFT_MASK, GDK_KEY_h, NULL, sc_delete_highlight, (mode), 0, NULL);
+  girara_shortcut_add(gsession, 0, GDK_KEY_x, NULL, sc_delete_highlight, (mode), 0, NULL);
 
 #define DEFAULT_MOUSE_EVENTS(mode)                                                                                     \
   girara_mouse_event_add(gsession, 0, 0, sc_mouse_scroll, (mode), GIRARA_EVENT_SCROLL_UP, UP, NULL);                   \

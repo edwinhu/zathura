@@ -52,6 +52,9 @@ typedef struct zathura_page_widget_private_s {
   struct {
     zathura_rectangle_t selection; /**< x1 y1: click point, x2 y2: current position */
     gboolean over_link;
+    double last_click_x;           /**< Last click x position (persists after release) */
+    double last_click_y;           /**< Last click y position (persists after release) */
+    gboolean has_last_click;       /**< True if last_click is valid */
   } mouse;
 
   struct {
@@ -66,7 +69,8 @@ typedef struct zathura_page_widget_private_s {
   } signatures;
 
   struct {
-    girara_list_t* list; /**< List of persistent highlights on this page */
+    girara_list_t* list;    /**< List of persistent highlights on this page */
+    char* selected_id;      /**< ID of currently selected highlight (for deletion) */
   } highlights;
 } ZathuraPagePrivate;
 
@@ -225,6 +229,9 @@ static void zathura_page_widget_init(ZathuraPage* widget) {
   priv->mouse.selection.x2 = -1;
   priv->mouse.selection.y2 = -1;
   priv->mouse.over_link    = false;
+  priv->mouse.last_click_x = 0;
+  priv->mouse.last_click_y = 0;
+  priv->mouse.has_last_click = false;
 
   priv->highlighter.bounds.x1 = -1;
   priv->highlighter.bounds.y1 = -1;
@@ -237,6 +244,7 @@ static void zathura_page_widget_init(ZathuraPage* widget) {
   priv->signatures.draw      = false;
 
   priv->highlights.list = NULL;
+  priv->highlights.selected_id = NULL;
 
   const unsigned int event_mask =
       GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK | GDK_POINTER_MOTION_MASK | GDK_LEAVE_NOTIFY_MASK;
@@ -292,6 +300,10 @@ static void zathura_page_widget_finalize(GObject* object) {
 
   if (priv->highlights.list != NULL) {
     girara_list_free(priv->highlights.list);
+  }
+
+  if (priv->highlights.selected_id != NULL) {
+    g_free(priv->highlights.selected_id);
   }
 
   G_OBJECT_CLASS(zathura_page_widget_parent_class)->finalize(object);
@@ -772,6 +784,23 @@ static gboolean zathura_page_widget_draw(GtkWidget* widget, cairo_t* cairo) {
             }
           }
         }
+
+        /* Draw red border if this highlight is selected */
+        if (priv->highlights.selected_id != NULL && highlight->id != NULL &&
+            g_strcmp0(highlight->id, priv->highlights.selected_id) == 0) {
+          cairo_set_source_rgba(cairo, 1.0, 0.0, 0.0, 0.9);  /* Red border */
+          cairo_set_line_width(cairo, 2.0);
+          if (highlight->rects != NULL) {
+            for (size_t r = 0; r < girara_list_size(highlight->rects); r++) {
+              zathura_rectangle_t* rect = girara_list_nth(highlight->rects, r);
+              if (rect != NULL) {
+                zathura_rectangle_t rectangle = recalc_rectangle(priv->page, *rect);
+                cairo_rectangle(cairo, rectangle.x1, rectangle.y1, rectangle.x2 - rectangle.x1, rectangle.y2 - rectangle.y1);
+                cairo_stroke(cairo);
+              }
+            }
+          }
+        }
       }
     }
   } else {
@@ -1077,6 +1106,60 @@ static gboolean cb_zathura_page_widget_button_press_event(GtkWidget* widget, Gdk
       priv->mouse.selection.y1 = y;
       priv->mouse.selection.x2 = x;
       priv->mouse.selection.y2 = y;
+
+      /* Store last click (persists after release) */
+      priv->mouse.last_click_x = x;
+      priv->mouse.last_click_y = y;
+      priv->mouse.has_last_click = true;
+
+      /* Check if click is on any highlight */
+      bool found_highlight = false;
+      if (priv->highlights.list != NULL) {
+        for (size_t idx = 0; idx != girara_list_size(priv->highlights.list); ++idx) {
+          zathura_highlight_t* highlight = girara_list_nth(priv->highlights.list, idx);
+          if (highlight == NULL || highlight->rects == NULL) {
+            continue;
+          }
+
+          /* Check all rects in this highlight */
+          for (size_t r = 0; r < girara_list_size(highlight->rects); r++) {
+            zathura_rectangle_t* rect = girara_list_nth(highlight->rects, r);
+            if (rect == NULL) {
+              continue;
+            }
+
+            /* Convert to widget coords for comparison with button->x/y */
+            zathura_rectangle_t widget_rect = recalc_rectangle(priv->page, *rect);
+            if (widget_rect.x1 <= button->x && widget_rect.x2 >= button->x &&
+                widget_rect.y1 <= button->y && widget_rect.y2 >= button->y) {
+              /* Hit! Toggle selection */
+              if (priv->highlights.selected_id != NULL &&
+                  g_strcmp0(priv->highlights.selected_id, highlight->id) == 0) {
+                /* Already selected - deselect (toggle) */
+                g_free(priv->highlights.selected_id);
+                priv->highlights.selected_id = NULL;
+              } else {
+                /* Select this highlight */
+                g_free(priv->highlights.selected_id);
+                priv->highlights.selected_id = g_strdup(highlight->id);
+              }
+              found_highlight = true;
+              zathura_page_widget_redraw_canvas(page);
+              break;
+            }
+          }
+          if (found_highlight) {
+            break;
+          }
+        }
+      }
+
+      /* If clicked elsewhere, clear selection */
+      if (!found_highlight && priv->highlights.selected_id != NULL) {
+        g_free(priv->highlights.selected_id);
+        priv->highlights.selected_id = NULL;
+        zathura_page_widget_redraw_canvas(page);
+      }
 
     } else if (button->type == GDK_2BUTTON_PRESS || button->type == GDK_3BUTTON_PRESS) {
       /* abort the selection */
@@ -1466,4 +1549,61 @@ void zathura_page_widget_add_highlight(ZathuraPage* widget, zathura_highlight_t*
 
   girara_list_append(priv->highlights.list, highlight);
   zathura_page_widget_redraw_canvas(widget);
+}
+
+bool zathura_page_widget_remove_highlight(ZathuraPage* widget, const char* highlight_id) {
+  g_return_val_if_fail(ZATHURA_IS_PAGE(widget), false);
+  g_return_val_if_fail(highlight_id != NULL, false);
+  ZathuraPagePrivate* priv = zathura_page_widget_get_instance_private(widget);
+
+  if (priv->highlights.list == NULL) {
+    return false;
+  }
+
+  for (size_t idx = 0; idx != girara_list_size(priv->highlights.list); ++idx) {
+    zathura_highlight_t* highlight = girara_list_nth(priv->highlights.list, idx);
+    if (highlight != NULL && highlight->id != NULL && g_strcmp0(highlight->id, highlight_id) == 0) {
+      girara_list_remove(priv->highlights.list, highlight);
+      zathura_page_widget_redraw_canvas(widget);
+      return true;
+    }
+  }
+
+  return false;
+}
+
+girara_list_t* zathura_page_widget_get_highlights(ZathuraPage* widget) {
+  g_return_val_if_fail(ZATHURA_IS_PAGE(widget), NULL);
+  ZathuraPagePrivate* priv = zathura_page_widget_get_instance_private(widget);
+  return priv->highlights.list;
+}
+
+bool zathura_page_widget_get_last_click(ZathuraPage* widget, double* x, double* y) {
+  g_return_val_if_fail(ZATHURA_IS_PAGE(widget), false);
+  g_return_val_if_fail(x != NULL && y != NULL, false);
+  ZathuraPagePrivate* priv = zathura_page_widget_get_instance_private(widget);
+
+  if (!priv->mouse.has_last_click) {
+    return false;
+  }
+
+  *x = priv->mouse.last_click_x;
+  *y = priv->mouse.last_click_y;
+  return true;
+}
+
+const char* zathura_page_widget_get_selected_highlight_id(ZathuraPage* widget) {
+  g_return_val_if_fail(ZATHURA_IS_PAGE(widget), NULL);
+  ZathuraPagePrivate* priv = zathura_page_widget_get_instance_private(widget);
+  return priv->highlights.selected_id;
+}
+
+void zathura_page_widget_clear_selected_highlight(ZathuraPage* widget) {
+  g_return_if_fail(ZATHURA_IS_PAGE(widget));
+  ZathuraPagePrivate* priv = zathura_page_widget_get_instance_private(widget);
+  if (priv->highlights.selected_id != NULL) {
+    g_free(priv->highlights.selected_id);
+    priv->highlights.selected_id = NULL;
+    zathura_page_widget_redraw_canvas(widget);
+  }
 }
