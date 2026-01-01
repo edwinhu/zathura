@@ -46,6 +46,16 @@ static girara_list_t* get_recent_files(zathura_database_t* GIRARA_UNUSED(db), in
   return girara_list_new();
 }
 
+static bool add_highlight(zathura_database_t* GIRARA_UNUSED(db), const char* GIRARA_UNUSED(file),
+                          zathura_highlight_t* GIRARA_UNUSED(highlight)) {
+  return true;
+}
+
+static bool remove_highlight(zathura_database_t* GIRARA_UNUSED(db), const char* GIRARA_UNUSED(file),
+                             const char* GIRARA_UNUSED(id)) {
+  return true;
+}
+
 static void db_interface_init(ZathuraDatabaseInterface* iface) {
   /* initialize interface */
   iface->add_bookmark     = add_bookmark;
@@ -58,6 +68,9 @@ static void db_interface_init(ZathuraDatabaseInterface* iface) {
   iface->get_recent_files = get_recent_files;
   iface->load_quickmarks  = load_list;
   iface->save_quickmarks  = save_list;
+  iface->add_highlight    = add_highlight;
+  iface->remove_highlight = remove_highlight;
+  iface->load_highlights  = load_list;
 }
 
 static void io_interface_init(GiraraInputHistoryIOInterface* iface) {

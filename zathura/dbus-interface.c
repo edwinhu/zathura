@@ -18,6 +18,7 @@
 #include <girara/utils.h>
 #include <girara/log.h>
 #include <json-glib/json-glib.h>
+
 #include <string.h>
 #include <sys/types.h>
 #include <unistd.h>

@@ -9,6 +9,7 @@
 #include "render.h"
 #include "marks.h"
 #include "utils.h"
+#include "types.h"
 
 #include <girara-gtk/settings.h>
 #include <girara-gtk/session.h>
@@ -405,6 +406,13 @@ static void add_default_shortcuts(girara_session_t* gsession, girara_mode_t mode
   girara_shortcut_add(gsession, 0, 0, "zZ", sc_zoom, mode, ZOOM_SPECIFIC, NULL);
 
   girara_shortcut_add(gsession, GDK_MOD1_MASK, GDK_KEY_o, NULL, sc_file_chooser, mode, 0, NULL);
+
+  /* Highlight shortcuts: h=yellow, H=green, Ctrl-h=blue, Alt-h=red */
+  girara_shortcut_add(gsession, 0, GDK_KEY_h, NULL, sc_highlight, mode, ZATHURA_HIGHLIGHT_YELLOW, NULL);
+  girara_shortcut_add(gsession, GDK_SHIFT_MASK, GDK_KEY_h, NULL, sc_highlight, mode, ZATHURA_HIGHLIGHT_GREEN, NULL);
+  girara_shortcut_add(gsession, GDK_CONTROL_MASK, GDK_KEY_h, NULL, sc_highlight, mode, ZATHURA_HIGHLIGHT_BLUE, NULL);
+  girara_shortcut_add(gsession, GDK_MOD1_MASK, GDK_KEY_h, NULL, sc_highlight, mode, ZATHURA_HIGHLIGHT_RED, NULL);
+  girara_shortcut_add(gsession, GDK_CONTROL_MASK | GDK_SHIFT_MASK, GDK_KEY_h, NULL, sc_delete_highlight, mode, 0, NULL);
 }
 
 static void add_default_mouse_events(girara_session_t* gsession, girara_mode_t mode) {
@@ -815,6 +823,8 @@ void config_load_default(zathura_t* zathura) {
   girara_shortcut_mapping_add(gsession, "follow",                   sc_follow);
   girara_shortcut_mapping_add(gsession, "file_chooser",             sc_file_chooser);
   girara_shortcut_mapping_add(gsession, "goto",                     sc_goto);
+  girara_shortcut_mapping_add(gsession, "highlight",                sc_highlight);
+  girara_shortcut_mapping_add(gsession, "delete_highlight",         sc_delete_highlight);
   girara_shortcut_mapping_add(gsession, "jumplist",                 sc_jumplist);
   girara_shortcut_mapping_add(gsession, "mark_add",                 sc_mark_add);
   girara_shortcut_mapping_add(gsession, "mark_evaluate",            sc_mark_evaluate);
@@ -881,6 +891,10 @@ void config_load_default(zathura_t* zathura) {
   girara_argument_mapping_add(gsession, "equal_height",       ZATHURA_EQUAL_HEIGHT);
   girara_argument_mapping_add(gsession, "smooth-up",          SMOOTH_UP);
   girara_argument_mapping_add(gsession, "smooth-down",        SMOOTH_DOWN);
+  girara_argument_mapping_add(gsession, "highlight-yellow",   ZATHURA_HIGHLIGHT_YELLOW);
+  girara_argument_mapping_add(gsession, "highlight-green",    ZATHURA_HIGHLIGHT_GREEN);
+  girara_argument_mapping_add(gsession, "highlight-blue",     ZATHURA_HIGHLIGHT_BLUE);
+  girara_argument_mapping_add(gsession, "highlight-red",      ZATHURA_HIGHLIGHT_RED);
   /* clang-format on */
 }
 
