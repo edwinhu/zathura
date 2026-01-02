@@ -1,8 +1,10 @@
 # SPEC: Embedded PDF Annotation Import (Phase 1)
 
+**Status: COMPLETE** (2026-01-02)
+
 ## Feature
 
-`:highlights import` command imports embedded PDF highlight/underline/strikeout annotations via mupdf and **persists them to SQLite** as regular highlights.
+`:hlimport` command imports embedded PDF highlight/underline/strikeout annotations via mupdf and **persists them to SQLite** as regular highlights.
 
 ## User Flow
 
@@ -226,25 +228,25 @@ rect.y2 = page_height - r.y0;
 
 ## Acceptance Criteria
 
-- [ ] `:highlights import` command exists and is documented
-- [ ] Command imports embedded PDF annotations to SQLite
-- [ ] Imported highlights appear on page immediately
-- [ ] Imported highlights show in `:highlights` panel
-- [ ] Imported highlights have correct color mapping (Y/G/B/R)
-- [ ] Imported highlights persist after document close/reopen
-- [ ] Can delete/modify imported highlights like any other
-- [ ] Shows count: "Imported N highlights"
-- [ ] No crash on PDFs without annotations (shows "Imported 0")
-- [ ] No duplicates on re-import (same ID handling)
+- [x] `:hlimport` command exists (renamed from `:highlights import` - girara doesn't support spaces)
+- [x] Command imports embedded PDF annotations to SQLite
+- [x] Imported highlights appear on page immediately
+- [x] Imported highlights show in `:highlights` panel
+- [x] Imported highlights have correct color mapping (Y/G/B/R)
+- [x] Imported highlights persist after document close/reopen
+- [x] Can delete/modify imported highlights like any other
+- [x] Shows count: "Imported N highlights"
+- [x] No crash on PDFs without annotations (shows "Imported 0")
+- [x] No duplicates on re-import (geometry-based deduplication)
 
 ## Test Plan
 
 1. Open PDF with embedded highlights from another app (Preview, Acrobat, sioyek)
-2. Run `:highlights import`
+2. Run `:hlimport`
 3. Verify notification shows import count
 4. Verify highlights appear on pages with correct colors
 5. Run `:highlights` - verify imported highlights listed
 6. Delete an imported highlight - verify it's removed
 7. Close and reopen document - verify highlights persisted
-8. Run `:highlights import` again - verify no duplicates created
+8. Run `:hlimport` again - verify no duplicates created
 9. Test on PDF with no annotations - verify "Imported 0"
