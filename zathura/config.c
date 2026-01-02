@@ -661,7 +661,6 @@ void config_load_default(zathura_t* zathura) {
   girara_inputbar_command_add(gsession, "highlights", NULL,   cmd_highlights,      NULL,         _("List all highlights"));
   girara_inputbar_command_add(gsession, "hlimport", NULL, cmd_highlights_import, NULL, _("Import embedded PDF annotations as highlights"));
   girara_inputbar_command_add(gsession, "hlexport", NULL, cmd_highlights_export, NULL, _("Export highlights to PDF annotations"));
-  girara_inputbar_command_add(gsession, "hldelete", NULL, cmd_highlights_delete_embedded, NULL, _("Delete selected embedded PDF annotation"));
   girara_inputbar_command_add(gsession, "readwise_sync", NULL, cmd_readwise_sync, NULL, _("Sync highlights to Readwise"));
   girara_inputbar_command_add(gsession, "close",      NULL,   cmd_close,           NULL,         _("Close current file"));
   girara_inputbar_command_add(gsession, "info",       NULL,   cmd_info,            NULL,         _("Show file information"));
