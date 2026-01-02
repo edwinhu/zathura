@@ -164,4 +164,12 @@ const char* zathura_page_widget_get_selected_highlight_id(ZathuraPage* widget);
  */
 void zathura_page_widget_clear_selected_highlight(ZathuraPage* widget);
 
+/**
+ * Get the rectangles of the currently selected embedded annotation
+ *
+ * @param widget the widget
+ * @return list of rectangles or NULL if no embedded annotation selected
+ */
+girara_list_t* zathura_page_widget_get_embedded_selected_rects(ZathuraPage* widget);
+
 #endif

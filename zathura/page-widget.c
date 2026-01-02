@@ -71,6 +71,7 @@ typedef struct zathura_page_widget_private_s {
   struct {
     girara_list_t* list;    /**< List of persistent highlights on this page */
     char* selected_id;      /**< ID of currently selected highlight (for deletion) */
+    girara_list_t* embedded_selected_rects;  /**< Rectangles of selected embedded annotation */
   } highlights;
 } ZathuraPagePrivate;
 
@@ -245,6 +246,7 @@ static void zathura_page_widget_init(ZathuraPage* widget) {
 
   priv->highlights.list = NULL;
   priv->highlights.selected_id = NULL;
+  priv->highlights.embedded_selected_rects = NULL;
 
   const unsigned int event_mask =
       GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK | GDK_POINTER_MOTION_MASK | GDK_LEAVE_NOTIFY_MASK;
@@ -304,6 +306,10 @@ static void zathura_page_widget_finalize(GObject* object) {
 
   if (priv->highlights.selected_id != NULL) {
     g_free(priv->highlights.selected_id);
+  }
+
+  if (priv->highlights.embedded_selected_rects != NULL) {
+    girara_list_free(priv->highlights.embedded_selected_rects);
   }
 
   G_OBJECT_CLASS(zathura_page_widget_parent_class)->finalize(object);
@@ -803,6 +809,20 @@ static gboolean zathura_page_widget_draw(GtkWidget* widget, cairo_t* cairo) {
         }
       }
     }
+
+    /* Draw red border if an embedded annotation is selected */
+    if (priv->highlights.embedded_selected_rects != NULL) {
+      cairo_set_source_rgba(cairo, 1.0, 0.0, 0.0, 0.9);  /* Red border */
+      cairo_set_line_width(cairo, 2.0);
+      for (size_t r = 0; r < girara_list_size(priv->highlights.embedded_selected_rects); r++) {
+        zathura_rectangle_t* rect = girara_list_nth(priv->highlights.embedded_selected_rects, r);
+        if (rect != NULL) {
+          zathura_rectangle_t rectangle = recalc_rectangle(priv->page, *rect);
+          cairo_rectangle(cairo, rectangle.x1, rectangle.y1, rectangle.x2 - rectangle.x1, rectangle.y2 - rectangle.y1);
+          cairo_stroke(cairo);
+        }
+      }
+    }
   } else {
     girara_debug("rendering loading screen, flicker might be happening");
 
@@ -1154,11 +1174,67 @@ static gboolean cb_zathura_page_widget_button_press_event(GtkWidget* widget, Gdk
         }
       }
 
+      /* If no database highlight clicked, check embedded PDF annotations */
+      if (!found_highlight) {
+        girara_list_t* embedded = zathura_page_get_annotations(priv->page, NULL);
+        if (embedded != NULL) {
+          for (size_t idx = 0; idx < girara_list_size(embedded); idx++) {
+            zathura_highlight_t* hl = girara_list_nth(embedded, idx);
+            if (hl == NULL || hl->rects == NULL) continue;
+
+            for (size_t r = 0; r < girara_list_size(hl->rects); r++) {
+              zathura_rectangle_t* rect = girara_list_nth(hl->rects, r);
+              if (rect == NULL) continue;
+
+              zathura_rectangle_t widget_rect = recalc_rectangle(priv->page, *rect);
+              if (widget_rect.x1 <= button->x && widget_rect.x2 >= button->x &&
+                  widget_rect.y1 <= button->y && widget_rect.y2 >= button->y) {
+                /* Hit embedded annotation! Clear database selection first */
+                if (priv->highlights.selected_id != NULL) {
+                  g_free(priv->highlights.selected_id);
+                  priv->highlights.selected_id = NULL;
+                }
+                /* Clear old embedded selection */
+                if (priv->highlights.embedded_selected_rects != NULL) {
+                  girara_list_free(priv->highlights.embedded_selected_rects);
+                }
+                /* Copy rects for selection */
+                priv->highlights.embedded_selected_rects = girara_list_new2(g_free);
+                for (size_t cr = 0; cr < girara_list_size(hl->rects); cr++) {
+                  zathura_rectangle_t* src = girara_list_nth(hl->rects, cr);
+                  if (src != NULL) {
+                    zathura_rectangle_t* copy = g_malloc(sizeof(zathura_rectangle_t));
+                    *copy = *src;
+                    girara_list_append(priv->highlights.embedded_selected_rects, copy);
+                  }
+                }
+                found_highlight = true;
+                zathura_page_widget_redraw_canvas(page);
+                break;
+              }
+            }
+            if (found_highlight) break;
+          }
+          girara_list_free(embedded);
+        }
+      }
+
       /* If clicked elsewhere, clear selection */
-      if (!found_highlight && priv->highlights.selected_id != NULL) {
-        g_free(priv->highlights.selected_id);
-        priv->highlights.selected_id = NULL;
-        zathura_page_widget_redraw_canvas(page);
+      if (!found_highlight) {
+        bool need_redraw = false;
+        if (priv->highlights.selected_id != NULL) {
+          g_free(priv->highlights.selected_id);
+          priv->highlights.selected_id = NULL;
+          need_redraw = true;
+        }
+        if (priv->highlights.embedded_selected_rects != NULL) {
+          girara_list_free(priv->highlights.embedded_selected_rects);
+          priv->highlights.embedded_selected_rects = NULL;
+          need_redraw = true;
+        }
+        if (need_redraw) {
+          zathura_page_widget_redraw_canvas(page);
+        }
       }
 
     } else if (button->type == GDK_2BUTTON_PRESS || button->type == GDK_3BUTTON_PRESS) {
@@ -1606,4 +1682,14 @@ void zathura_page_widget_clear_selected_highlight(ZathuraPage* widget) {
     priv->highlights.selected_id = NULL;
     zathura_page_widget_redraw_canvas(widget);
   }
+  if (priv->highlights.embedded_selected_rects != NULL) {
+    girara_list_free(priv->highlights.embedded_selected_rects);
+    priv->highlights.embedded_selected_rects = NULL;
+  }
+}
+
+girara_list_t* zathura_page_widget_get_embedded_selected_rects(ZathuraPage* widget) {
+  g_return_val_if_fail(ZATHURA_IS_PAGE(widget), NULL);
+  ZathuraPagePrivate* priv = zathura_page_widget_get_instance_private(widget);
+  return priv->highlights.embedded_selected_rects;
 }

@@ -25,6 +25,9 @@
 #include "document-widget.h"
 #include <math.h>
 
+/* Forward declarations */
+static bool highlights_geometry_match(girara_list_t* rects1, girara_list_t* rects2);
+
 /* Helper function for highlighting the links */
 static bool draw_links(zathura_t* zathura) {
   /* set pages to draw links */
@@ -86,6 +89,16 @@ bool sc_abort(girara_session_t* session, girara_argument_t* UNUSED(argument), gi
   g_return_val_if_fail(session->global.data != NULL, false);
   zathura_t* zathura           = session->global.data;
   zathura_document_t* document = zathura_get_document(zathura);
+
+  /* Cancel pending embedded delete if active */
+  if (zathura->global.embedded_delete_pending) {
+    if (zathura->global.embedded_delete_rects != NULL) {
+      girara_list_free(zathura->global.embedded_delete_rects);
+      zathura->global.embedded_delete_rects = NULL;
+    }
+    zathura->global.embedded_delete_pending = false;
+    girara_notify(session, GIRARA_INFO, _("Delete cancelled."));
+  }
 
   bool clear_search = true;
   girara_setting_get(session, "abort-clear-search", &clear_search);
@@ -1919,6 +1932,29 @@ bool sc_delete_highlight(girara_session_t* session, girara_argument_t* UNUSED(ar
     char* id_copy = g_strdup(selected_id);
     girara_debug("Deleting highlight with ID: %s", id_copy);
 
+    /* Get highlight rects before deletion for embedded matching */
+    girara_list_t* target_rects = NULL;
+    girara_list_t* all_highlights = zathura_page_widget_get_highlights(ZATHURA_PAGE(page_widget));
+    if (all_highlights != NULL) {
+      GIRARA_LIST_FOREACH_BODY(all_highlights, zathura_highlight_t*, hl,
+        if (hl != NULL && hl->id != NULL && g_strcmp0(hl->id, id_copy) == 0) {
+          /* Found target highlight - copy its rects for later matching */
+          if (hl->rects != NULL && girara_list_size(hl->rects) > 0) {
+            target_rects = girara_list_new2(g_free);
+            for (size_t i = 0; i < girara_list_size(hl->rects); i++) {
+              zathura_rectangle_t* src = girara_list_nth(hl->rects, i);
+              if (src != NULL) {
+                zathura_rectangle_t* copy = g_malloc(sizeof(zathura_rectangle_t));
+                *copy = *src;
+                girara_list_append(target_rects, copy);
+              }
+            }
+          }
+          break;
+        }
+      );
+    }
+
     const char* file_path = zathura_document_get_path(zathura->document);
     if (zathura->database != NULL && file_path != NULL) {
       girara_debug("Removing from database: %s", file_path);
@@ -1931,12 +1967,201 @@ bool sc_delete_highlight(girara_session_t* session, girara_argument_t* UNUSED(ar
     girara_debug("Remove from widget returned: %s", removed ? "true" : "false");
 
     g_free(id_copy);
+
+    /* Check for matching embedded annotation */
+    if (target_rects != NULL) {
+      girara_list_t* embedded = zathura_page_get_annotations(page, NULL);
+      if (embedded != NULL) {
+        bool found_match = false;
+        GIRARA_LIST_FOREACH_BODY(embedded, zathura_highlight_t*, emb_hl,
+          if (emb_hl != NULL && emb_hl->rects != NULL &&
+              highlights_geometry_match(target_rects, emb_hl->rects)) {
+            /* Found matching embedded - set up confirmation */
+            zathura->global.embedded_delete_pending = true;
+            zathura->global.embedded_delete_page = page_id;
+            zathura->global.embedded_delete_rects = girara_list_new2(g_free);
+            for (size_t i = 0; i < girara_list_size(emb_hl->rects); i++) {
+              zathura_rectangle_t* src = girara_list_nth(emb_hl->rects, i);
+              if (src != NULL) {
+                zathura_rectangle_t* copy = g_malloc(sizeof(zathura_rectangle_t));
+                *copy = *src;
+                girara_list_append(zathura->global.embedded_delete_rects, copy);
+              }
+            }
+            girara_notify(session, GIRARA_WARNING,
+                _("Also delete matching embedded annotation? Press 'y' to confirm, Escape to cancel."));
+            found_match = true;
+            break;
+          }
+        );
+        girara_list_free(embedded);
+        if (found_match) {
+          girara_list_free(target_rects);
+          return true;
+        }
+      }
+      girara_list_free(target_rects);
+    }
+
     girara_notify(session, GIRARA_INFO, _("Highlight deleted."));
     return true;
   }
 
+  /* No database highlight found, check for embedded annotation selection */
+  for (unsigned int page_id = 0; page_id < number_of_pages; page_id++) {
+    zathura_page_t* page = zathura_document_get_page(zathura->document, page_id);
+    if (page == NULL) {
+      continue;
+    }
+
+    GtkWidget* page_widget = zathura_page_get_widget(zathura, page);
+    if (page_widget == NULL) {
+      continue;
+    }
+
+    girara_list_t* embedded_rects = zathura_page_widget_get_embedded_selected_rects(ZATHURA_PAGE(page_widget));
+    if (embedded_rects != NULL && girara_list_size(embedded_rects) > 0) {
+      /* Store pending delete state for confirmation */
+      zathura->global.embedded_delete_pending = true;
+      zathura->global.embedded_delete_page = page_id;
+
+      /* Copy rects for pending delete */
+      if (zathura->global.embedded_delete_rects != NULL) {
+        girara_list_free(zathura->global.embedded_delete_rects);
+      }
+      zathura->global.embedded_delete_rects = girara_list_new2(g_free);
+      for (size_t i = 0; i < girara_list_size(embedded_rects); i++) {
+        zathura_rectangle_t* src = girara_list_nth(embedded_rects, i);
+        if (src != NULL) {
+          zathura_rectangle_t* copy = g_malloc(sizeof(zathura_rectangle_t));
+          *copy = *src;
+          girara_list_append(zathura->global.embedded_delete_rects, copy);
+        }
+      }
+
+      girara_notify(session, GIRARA_WARNING,
+          _("Delete embedded annotation from PDF? Press 'y' to confirm, Escape to cancel."));
+      return true;
+    }
+  }
+
   /* No highlight selected */
   girara_notify(session, GIRARA_WARNING, _("Click on a highlight first, then press x."));
+  return false;
+}
+
+/* Helper function to check if two highlight geometries match */
+static bool highlights_geometry_match(girara_list_t* rects1, girara_list_t* rects2) {
+  if (rects1 == NULL || rects2 == NULL) {
+    return false;
+  }
+  if (girara_list_size(rects1) != girara_list_size(rects2)) {
+    return false;
+  }
+
+  const double eps = 1.0;
+  for (size_t i = 0; i < girara_list_size(rects1); i++) {
+    zathura_rectangle_t* r1 = girara_list_nth(rects1, i);
+    zathura_rectangle_t* r2 = girara_list_nth(rects2, i);
+    if (r1 == NULL || r2 == NULL) {
+      return false;
+    }
+    if (fabs(r1->x1 - r2->x1) > eps || fabs(r1->y1 - r2->y1) > eps ||
+        fabs(r1->x2 - r2->x2) > eps || fabs(r1->y2 - r2->y2) > eps) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool sc_confirm_embedded_delete(girara_session_t* session, girara_argument_t* UNUSED(argument),
+                                 girara_event_t* UNUSED(event), unsigned int UNUSED(t)) {
+  g_return_val_if_fail(session != NULL, false);
+  g_return_val_if_fail(session->global.data != NULL, false);
+  zathura_t* zathura = session->global.data;
+
+  if (!zathura->global.embedded_delete_pending) {
+    return false;  /* No pending delete, let normal 'y' handling occur */
+  }
+
+  /* Get the stored delete info */
+  unsigned int page_id = zathura->global.embedded_delete_page;
+  girara_list_t* rects = zathura->global.embedded_delete_rects;
+
+  if (rects == NULL || girara_list_size(rects) == 0) {
+    zathura->global.embedded_delete_pending = false;
+    return false;
+  }
+
+  zathura_page_t* page = zathura_document_get_page(zathura->document, page_id);
+  if (page == NULL) {
+    zathura->global.embedded_delete_pending = false;
+    girara_notify(session, GIRARA_ERROR, _("Invalid page."));
+    return true;
+  }
+
+  /* Delete embedded annotation */
+  zathura_error_t error = zathura_page_delete_annotation(page, rects);
+  if (error == ZATHURA_ERROR_OK) {
+    /* Save document */
+    const char* path = zathura_document_get_path(zathura->document);
+    if (zathura_document_save_as(zathura->document, path) != ZATHURA_ERROR_OK) {
+      girara_notify(session, GIRARA_WARNING, _("Deleted but failed to save."));
+    } else {
+      girara_notify(session, GIRARA_INFO, _("Embedded annotation deleted from PDF."));
+    }
+
+    /* Also delete matching database highlight */
+    const char* file_path = zathura_document_get_path(zathura->document);
+    if (zathura->database != NULL && file_path != NULL) {
+      girara_list_t* db_highlights = zathura_db_load_highlights(zathura->database, file_path);
+      if (db_highlights != NULL) {
+        GIRARA_LIST_FOREACH_BODY(db_highlights, zathura_highlight_t*, hl,
+          if (hl->page == page_id && highlights_geometry_match(hl->rects, rects)) {
+            zathura_db_remove_highlight(zathura->database, file_path, hl->id);
+            /* Also remove from page widget */
+            GtkWidget* page_widget = zathura_page_get_widget(zathura, page);
+            if (page_widget != NULL) {
+              zathura_page_widget_remove_highlight(ZATHURA_PAGE(page_widget), hl->id);
+            }
+          }
+        );
+        girara_list_free(db_highlights);
+      }
+    }
+  } else {
+    girara_notify(session, GIRARA_ERROR, _("Failed to delete embedded annotation."));
+  }
+
+  /* Clear selection and pending state */
+  GtkWidget* page_widget = zathura_page_get_widget(zathura, page);
+  if (page_widget != NULL) {
+    zathura_page_widget_clear_selected_highlight(ZATHURA_PAGE(page_widget));
+  }
+
+  /* Clean up pending state */
+  girara_list_free(zathura->global.embedded_delete_rects);
+  zathura->global.embedded_delete_rects = NULL;
+  zathura->global.embedded_delete_pending = false;
+
+  return true;
+}
+
+bool sc_cancel_embedded_delete(girara_session_t* session, girara_argument_t* UNUSED(argument),
+                                girara_event_t* UNUSED(event), unsigned int UNUSED(t)) {
+  g_return_val_if_fail(session != NULL, false);
+  g_return_val_if_fail(session->global.data != NULL, false);
+  zathura_t* zathura = session->global.data;
+
+  if (zathura->global.embedded_delete_pending) {
+    if (zathura->global.embedded_delete_rects != NULL) {
+      girara_list_free(zathura->global.embedded_delete_rects);
+      zathura->global.embedded_delete_rects = NULL;
+    }
+    zathura->global.embedded_delete_pending = false;
+    girara_notify(session, GIRARA_INFO, _("Delete cancelled."));
+    return true;
+  }
   return false;
 }
 

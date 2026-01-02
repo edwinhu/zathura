@@ -151,6 +151,9 @@ struct zathura_s {
     GdkModifierType highlighter_modmask;  /**< Modifier to draw with a highlighter */
     bool double_click_follow;             /**< Double/Single click to follow link */
     GtkTreePath* current_index_path;      /**< Current index path */
+    bool embedded_delete_pending;         /**< Waiting for confirmation to delete embedded annotation */
+    unsigned int embedded_delete_page;    /**< Page number for pending delete */
+    girara_list_t* embedded_delete_rects; /**< Rectangles for pending delete */
   } global;
 
   struct {

@@ -405,4 +405,26 @@ bool sc_delete_highlight(girara_session_t* session, girara_argument_t* argument,
  */
 bool sc_cycle_highlight_color(girara_session_t* session, girara_argument_t* argument, girara_event_t* event, unsigned int t);
 
+/**
+ * Confirm deletion of embedded annotation
+ *
+ * @param session The used girara session
+ * @param argument The used argument
+ * @param event Girara event
+ * @param t Number of executions
+ * @return true if no error occurred otherwise false
+ */
+bool sc_confirm_embedded_delete(girara_session_t* session, girara_argument_t* argument, girara_event_t* event, unsigned int t);
+
+/**
+ * Cancel pending deletion of embedded annotation
+ *
+ * @param session The used girara session
+ * @param argument The used argument
+ * @param event Girara event
+ * @param t Number of executions
+ * @return true if no error occurred otherwise false
+ */
+bool sc_cancel_embedded_delete(girara_session_t* session, girara_argument_t* argument, girara_event_t* event, unsigned int t);
+
 #endif // SHORTCUTS_H

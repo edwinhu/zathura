@@ -482,6 +482,8 @@ void config_load_default(zathura_t* zathura) {
   girara_shortcut_add(gsession, 0, GDK_KEY_y, NULL, sc_scroll, (mode), FULL_RIGHT, NULL);                              \
   girara_shortcut_add(gsession, 0, GDK_KEY_space, NULL, sc_scroll, (mode), FULL_DOWN, NULL);                           \
   girara_shortcut_add(gsession, GDK_SHIFT_MASK, GDK_KEY_space, NULL, sc_scroll, (mode), FULL_UP, NULL);                \
+  /* y key: check for pending embedded delete confirmation first, then fall back to copy filepath */                   \
+  girara_shortcut_add(gsession, 0, GDK_KEY_y, NULL, sc_confirm_embedded_delete, (mode), 0, NULL);                      \
   girara_shortcut_add(gsession, 0, GDK_KEY_Y, NULL, sc_copy_filepath, (mode), 0, NULL);                                \
                                                                                                                        \
   girara_shortcut_add(gsession, GDK_CONTROL_MASK, GDK_KEY_o, NULL, sc_jumplist, (mode), BACKWARD, NULL);               \
