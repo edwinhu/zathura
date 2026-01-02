@@ -372,3 +372,98 @@ pdf_update_annot(ctx, annot);
 6. Verify text content is preserved
 7. Run `:hlexport` again - verify no duplicates
 8. Test `:hlexport /tmp/test.pdf` - verify saves to path
+
+---
+
+# SPEC: Delete Embedded PDF Annotations (Phase 3)
+
+**Status: COMPLETE** (2026-01-02)
+
+## Feature
+
+`:hldelete` command deletes the currently selected embedded PDF annotation from the PDF file.
+
+## User Flow
+
+```
+1. User opens PDF with embedded highlights
+2. User clicks on an embedded highlight to select it
+3. User runs :hldelete
+4. Annotation is deleted from PDF
+5. Document is saved automatically
+6. Notification: "Embedded annotation deleted."
+```
+
+## Scope
+
+| Item | In Scope | Out of Scope |
+|------|----------|--------------|
+| `:hldelete` command | Yes | Batch delete |
+| Delete embedded PDF annotations | Yes | Delete database highlights |
+| Click-to-select target | Yes | Multi-select |
+| Auto-save after delete | Yes | Prompt before save |
+
+## Architecture
+
+```
+:hldelete → find page with selected highlight
+          → check if in database (reject if so)
+          → get highlight geometry (rects)
+          → zathura_page_delete_annotation(page, rects)
+              → plugin: pdf_page_delete_annotation()
+              → iterate annotations, match geometry
+              → pdf_delete_annot(ctx, ppage, annot)
+          → zathura_document_save_as(document, path)
+          → clear selection, remove from widget
+          → notify user
+```
+
+## Key Technical Details
+
+### MuPDF Delete API
+```c
+void pdf_delete_annot(fz_context *ctx, pdf_page *page, pdf_annot *annot);
+```
+
+### Geometry Matching
+Match by comparing PDF quad points with zathura rectangles:
+- Convert coordinates (PDF Y-up → zathura Y-down)
+- Use 1.0 pixel tolerance for floating point comparison
+
+## Files Modified
+
+### Zathura Core
+| File | Changes |
+|------|---------|
+| `zathura/plugin-api.h` | Add `page_delete_annotation` typedef |
+| `zathura/page.h` | Declare `zathura_page_delete_annotation()` |
+| `zathura/page.c` | Implement dispatch wrapper |
+| `zathura/commands.c` | Add `cmd_highlights_delete_embedded()` |
+| `zathura/commands.h` | Declare function |
+| `zathura/config.c` | Register `:hldelete` command |
+
+### MuPDF Plugin
+| File | Changes |
+|------|---------|
+| `plugin.h` | Declare `pdf_page_delete_annotation()` |
+| `annotations.c` | Implement with geometry matching |
+| `plugin.c` | Register in function table |
+
+## Acceptance Criteria
+
+- [x] `:hldelete` command exists
+- [x] Deletes selected embedded PDF annotation
+- [x] Saves document automatically
+- [x] Rejects database highlights with message
+- [x] Shows error if no highlight selected
+- [x] Deletion persists after close/reopen
+
+## Test Plan
+
+1. Open PDF with embedded highlights
+2. Click on an embedded highlight to select it
+3. Run `:hldelete`
+4. Verify notification shows success
+5. Verify annotation removed from display
+6. Close and reopen - verify still gone
+7. Test with no selection - verify error message
