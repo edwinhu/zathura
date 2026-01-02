@@ -23,6 +23,7 @@
 #include "adjustment.h"
 #include "database.h"
 #include "document-widget.h"
+#include "note-popup.h"
 #include <math.h>
 
 /* Forward declarations */
@@ -98,6 +99,12 @@ bool sc_abort(girara_session_t* session, girara_argument_t* UNUSED(argument), gi
     }
     zathura->global.embedded_delete_pending = false;
     girara_notify(session, GIRARA_INFO, _("Delete cancelled."));
+  }
+
+  /* Cancel note placement mode if active */
+  if (zathura->global.note_placement_mode) {
+    zathura->global.note_placement_mode = false;
+    girara_notify(session, GIRARA_INFO, _("Note placement cancelled."));
   }
 
   bool clear_search = true;
@@ -2289,5 +2296,335 @@ bool sc_file_chooser(girara_session_t* session, girara_argument_t* UNUSED(argume
 error:
 
   g_object_unref(native);
+  return false;
+}
+
+/**
+ * Callback function for note popup save
+ */
+static void note_save_callback(zathura_t* zathura, unsigned int page,
+                               double x, double y, const char* content,
+                               const char* note_id, void* UNUSED(data)) {
+  /* If content is empty or whitespace only, don't save */
+  if (content == NULL || content[0] == '\0') {
+    return;
+  }
+
+  /* Check if content is only whitespace */
+  const char* p = content;
+  while (*p != '\0') {
+    if (!g_ascii_isspace(*p)) {
+      break;
+    }
+    p++;
+  }
+  if (*p == '\0') {
+    return;  /* Only whitespace */
+  }
+
+  /* Create note */
+  zathura_note_t* note = zathura_note_new(page, x, y, content);
+  if (note == NULL) {
+    girara_notify(zathura->ui.session, GIRARA_ERROR, _("Failed to create note."));
+    return;
+  }
+
+  /* If editing existing note, use the same ID */
+  if (note_id != NULL) {
+    g_free(note->id);
+    note->id = g_strdup(note_id);
+  }
+
+  /* Save to database */
+  const char* file_path = zathura_document_get_path(zathura->document);
+  if (zathura->database != NULL && file_path != NULL) {
+    if (zathura_db_add_note(zathura->database, file_path, note) == false) {
+      girara_notify(zathura->ui.session, GIRARA_ERROR, _("Failed to save note."));
+      zathura_note_free(note);
+      return;
+    }
+  }
+
+  /* Add to page widget */
+  zathura_page_t* zpage = zathura_document_get_page(zathura->document, page);
+  if (zpage != NULL) {
+    GtkWidget* page_widget = zathura_page_get_widget(zathura, zpage);
+    if (page_widget != NULL) {
+      /* If editing existing note, remove the old one from widget first */
+      if (note_id != NULL) {
+        zathura_page_widget_remove_note(ZATHURA_PAGE(page_widget), note_id);
+      }
+      zathura_page_widget_add_note(ZATHURA_PAGE(page_widget), note);
+    } else {
+      zathura_note_free(note);
+    }
+  } else {
+    zathura_note_free(note);
+  }
+
+  if (note_id != NULL) {
+    girara_notify(zathura->ui.session, GIRARA_INFO, _("Note updated."));
+  } else {
+    girara_notify(zathura->ui.session, GIRARA_INFO, _("Note created."));
+  }
+}
+
+bool sc_note_create(girara_session_t* session, girara_argument_t* UNUSED(argument),
+                    girara_event_t* UNUSED(event), unsigned int UNUSED(t)) {
+  g_return_val_if_fail(session != NULL, false);
+  g_return_val_if_fail(session->global.data != NULL, false);
+  zathura_t* zathura = session->global.data;
+
+  if (zathura->document == NULL) {
+    girara_notify(session, GIRARA_WARNING, _("No document opened."));
+    return false;
+  }
+
+  /* Enter note placement mode */
+  zathura->global.note_placement_mode = true;
+  girara_notify(session, GIRARA_INFO, _("Click to place note..."));
+
+  return true;
+}
+
+void sc_note_handle_placement_click(zathura_t* zathura, GtkWidget* page_widget,
+                                    double widget_x, double widget_y,
+                                    unsigned int page, double x, double y) {
+  g_return_if_fail(zathura != NULL);
+  g_return_if_fail(page_widget != NULL);
+
+  /* Reset placement mode */
+  zathura->global.note_placement_mode = false;
+
+  /* Show popup for note entry */
+  if (zathura->ui.note_popup != NULL) {
+    zathura_note_popup_show(zathura->ui.note_popup, page_widget,
+                            widget_x, widget_y, page, x, y,
+                            NULL, note_save_callback, NULL);
+  }
+}
+
+void sc_note_handle_edit_click(zathura_t* zathura, GtkWidget* page_widget,
+                               double widget_x, double widget_y,
+                               zathura_note_t* note) {
+  g_return_if_fail(zathura != NULL);
+  g_return_if_fail(page_widget != NULL);
+  g_return_if_fail(note != NULL);
+
+  /* Show popup for editing existing note */
+  if (zathura->ui.note_popup != NULL) {
+    zathura_note_popup_show(zathura->ui.note_popup, page_widget,
+                            widget_x, widget_y, note->page,
+                            note->x, note->y, note, note_save_callback, NULL);
+  }
+}
+
+// Helper to free girara_list_t (for use with GDestroyNotify)
+static void notes_list_free(gpointer data) {
+  if (data != NULL) {
+    girara_list_free((girara_list_t*)data);
+  }
+}
+
+// Filter function for notes tree model
+static gboolean notes_filter_func(GtkTreeModel* model, GtkTreeIter* iter, gpointer data) {
+  GtkEntry* entry = GTK_ENTRY(data);
+  const gchar* search_text = gtk_entry_get_text(entry);
+
+  if (search_text == NULL || *search_text == '\0') {
+    return TRUE;
+  }
+
+  gchar* text = NULL;
+  gtk_tree_model_get(model, iter, 1, &text, -1);  // Column 1 is content
+
+  // Get fuzzy mode flag from the search entry
+  gboolean fuzzy_mode = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(entry), "fuzzy_mode"));
+
+  gboolean visible;
+  if (fuzzy_mode) {
+    visible = fuzzy_match(search_text, text);
+  } else {
+    visible = substring_match(search_text, text);
+  }
+
+  g_free(text);
+  return visible;
+}
+
+bool sc_toggle_notes(girara_session_t* session, girara_argument_t* UNUSED(argument),
+                     girara_event_t* UNUSED(event), unsigned int UNUSED(t)) {
+  g_return_val_if_fail(session != NULL, false);
+  g_return_val_if_fail(session->global.data != NULL, false);
+  zathura_t* zathura = session->global.data;
+
+  if (zathura->document == NULL) {
+    girara_notify(session, GIRARA_WARNING, _("No document opened."));
+    return false;
+  }
+
+  // If paned exists, toggle visibility of notes panel
+  if (zathura->ui.notes_paned != NULL) {
+    gboolean visible = gtk_widget_get_visible(zathura->ui.notes);
+    if (visible) {
+      // Hide panel
+      gtk_widget_hide(zathura->ui.notes);
+      gtk_widget_grab_focus(zathura->ui.view);
+    } else {
+      // Show panel and refresh
+      goto refresh_and_show;
+    }
+    return false;
+  }
+
+  // Create notes panel if doesn't exist
+  if (zathura->ui.notes == NULL) {
+    // Create container
+    GtkWidget* vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+
+    // Create search entry
+    GtkWidget* search_entry = gtk_entry_new();
+    gtk_entry_set_placeholder_text(GTK_ENTRY(search_entry), "Search [Tab: exact]...");
+    gtk_box_pack_start(GTK_BOX(vbox), search_entry, FALSE, FALSE, 0);
+    zathura->ui.notes_search = search_entry;
+
+    // Initialize fuzzy mode to TRUE (default to fuzzy matching)
+    g_object_set_data(G_OBJECT(search_entry), "fuzzy_mode", GINT_TO_POINTER(TRUE));
+
+    // Create scrolled window
+    GtkWidget* scrolled = gtk_scrolled_window_new(NULL, NULL);
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scrolled),
+                                    GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
+    gtk_box_pack_start(GTK_BOX(vbox), scrolled, TRUE, TRUE, 0);
+
+    // Create list store: page_str, content_str, note_ptr
+    GtkListStore* store = gtk_list_store_new(3,
+        G_TYPE_STRING, G_TYPE_STRING, G_TYPE_POINTER);
+
+    // Create filter model
+    GtkTreeModel* filter = gtk_tree_model_filter_new(GTK_TREE_MODEL(store), NULL);
+    gtk_tree_model_filter_set_visible_func(GTK_TREE_MODEL_FILTER(filter),
+        notes_filter_func, search_entry, NULL);
+
+    // Create tree view
+    GtkWidget* treeview = gtk_tree_view_new_with_model(filter);
+    gtk_tree_view_set_headers_visible(GTK_TREE_VIEW(treeview), TRUE);
+
+    // Page column
+    GtkCellRenderer* renderer = gtk_cell_renderer_text_new();
+    GtkTreeViewColumn* column = gtk_tree_view_column_new_with_attributes(
+        "Page", renderer, "text", 0, NULL);
+    gtk_tree_view_append_column(GTK_TREE_VIEW(treeview), column);
+
+    // Content column (expand, ellipsize)
+    renderer = gtk_cell_renderer_text_new();
+    g_object_set(renderer, "ellipsize", PANGO_ELLIPSIZE_END, NULL);
+    column = gtk_tree_view_column_new_with_attributes(
+        "Content", renderer, "text", 1, NULL);
+    gtk_tree_view_column_set_expand(column, TRUE);
+    gtk_tree_view_append_column(GTK_TREE_VIEW(treeview), column);
+
+    gtk_container_add(GTK_CONTAINER(scrolled), treeview);
+
+    // Connect signals
+    g_signal_connect(search_entry, "changed",
+        G_CALLBACK(cb_notes_search_changed), filter);
+    g_signal_connect(search_entry, "key-press-event",
+        G_CALLBACK(cb_notes_search_key_press), filter);
+    g_signal_connect(treeview, "row-activated",
+        G_CALLBACK(cb_notes_row_activated), zathura);
+    g_signal_connect(treeview, "key-press-event",
+        G_CALLBACK(cb_notes_key_press), zathura);
+
+    // Store reference to treeview for key handling
+    g_object_set_data(G_OBJECT(vbox), "treeview", treeview);
+    g_object_set_data(G_OBJECT(vbox), "store", store);
+
+    // Set minimum height for notes panel
+    gtk_widget_set_size_request(vbox, -1, 150);
+
+    zathura->ui.notes = vbox;
+  }
+
+  // Create paned container and reparent view
+  if (zathura->ui.notes_paned == NULL) {
+    GtkWidget* paned = gtk_paned_new(GTK_ORIENTATION_VERTICAL);
+
+    // Get current parent of view and reparent
+    GtkWidget* view_parent = gtk_widget_get_parent(zathura->ui.view);
+    g_object_ref(zathura->ui.view);
+    gtk_container_remove(GTK_CONTAINER(view_parent), zathura->ui.view);
+
+    // Add view to top of paned
+    gtk_paned_pack1(GTK_PANED(paned), zathura->ui.view, TRUE, FALSE);
+    g_object_unref(zathura->ui.view);
+
+    // Add notes to bottom of paned
+    gtk_paned_pack2(GTK_PANED(paned), zathura->ui.notes, FALSE, FALSE);
+
+    // Add paned to original parent
+    gtk_container_add(GTK_CONTAINER(view_parent), paned);
+    gtk_widget_show(paned);
+
+    zathura->ui.notes_paned = paned;
+  }
+
+refresh_and_show:
+  ;  // Empty statement required after label before declaration
+
+  // Populate/refresh the list
+  GtkListStore* store = g_object_get_data(G_OBJECT(zathura->ui.notes), "store");
+  gtk_list_store_clear(store);
+
+  const char* file_path = zathura_document_get_path(zathura->document);
+  girara_list_t* notes = zathura_db_load_notes(zathura->database, file_path);
+
+  if (notes != NULL) {
+    GIRARA_LIST_FOREACH_BODY(notes, zathura_note_t*, note,
+      GtkTreeIter iter;
+      gtk_list_store_append(store, &iter);
+
+      char* page_str = g_strdup_printf("%u", note->page + 1);
+
+      // Truncate content to 50 chars max for preview
+      char* content_preview = NULL;
+      if (note->content != NULL) {
+        size_t len = strlen(note->content);
+        if (len > 50) {
+          content_preview = g_strndup(note->content, 47);
+          char* tmp = g_strdup_printf("%s...", content_preview);
+          g_free(content_preview);
+          content_preview = tmp;
+        } else {
+          content_preview = g_strdup(note->content);
+        }
+        // Replace newlines with spaces for single-line display
+        for (char* p = content_preview; *p; p++) {
+          if (*p == '\n' || *p == '\r') {
+            *p = ' ';
+          }
+        }
+      } else {
+        content_preview = g_strdup("(empty)");
+      }
+
+      gtk_list_store_set(store, &iter,
+          0, page_str,
+          1, content_preview,
+          2, note,
+          -1);
+      g_free(page_str);
+      g_free(content_preview);
+    );
+  }
+
+  // Store the notes list on the widget so it gets freed on refresh/destroy
+  // (note pointers in GtkListStore point into this list)
+  g_object_set_data_full(G_OBJECT(zathura->ui.notes), "notes_list", notes, notes_list_free);
+
+  // Show panel and focus search
+  gtk_widget_show_all(zathura->ui.notes);
+  gtk_widget_grab_focus(zathura->ui.notes_search);
+
   return false;
 }

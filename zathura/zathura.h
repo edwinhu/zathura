@@ -122,6 +122,10 @@ struct zathura_s {
     GtkWidget* highlights;        /**< Widget to show highlights list */
     GtkWidget* highlights_search; /**< Search entry for highlight filter */
     GtkWidget* highlights_paned;  /**< Paned container for document + highlights */
+    GtkWidget* note_popup;        /**< Note edit popup widget */
+    GtkWidget* notes_paned;       /**< Paned container for document + notes */
+    GtkWidget* notes;             /**< Widget to show notes list */
+    GtkWidget* notes_search;      /**< Search entry for notes filter */
   } ui;
 
   struct {
@@ -154,6 +158,7 @@ struct zathura_s {
     bool embedded_delete_pending;         /**< Waiting for confirmation to delete embedded annotation */
     unsigned int embedded_delete_page;    /**< Page number for pending delete */
     girara_list_t* embedded_delete_rects; /**< Rectangles for pending delete */
+    bool note_placement_mode;             /**< True when waiting for click to place note */
   } global;
 
   struct {

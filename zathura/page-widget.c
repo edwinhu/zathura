@@ -73,6 +73,11 @@ typedef struct zathura_page_widget_private_s {
     char* selected_id;      /**< ID of currently selected highlight (for deletion) */
     girara_list_t* embedded_selected_rects;  /**< Rectangles of selected embedded annotation */
   } highlights;
+
+  struct {
+    girara_list_t* list;    /**< List of notes on this page */
+    char* selected_id;      /**< ID of selected note (if any) */
+  } notes;
 } ZathuraPagePrivate;
 
 G_DEFINE_TYPE_WITH_CODE(ZathuraPage, zathura_page_widget, GTK_TYPE_DRAWING_AREA, G_ADD_PRIVATE(ZathuraPage))
@@ -248,6 +253,9 @@ static void zathura_page_widget_init(ZathuraPage* widget) {
   priv->highlights.selected_id = NULL;
   priv->highlights.embedded_selected_rects = NULL;
 
+  priv->notes.list = NULL;
+  priv->notes.selected_id = NULL;
+
   const unsigned int event_mask =
       GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK | GDK_POINTER_MOTION_MASK | GDK_LEAVE_NOTIFY_MASK;
   gtk_widget_add_events(GTK_WIDGET(widget), event_mask);
@@ -310,6 +318,14 @@ static void zathura_page_widget_finalize(GObject* object) {
 
   if (priv->highlights.embedded_selected_rects != NULL) {
     girara_list_free(priv->highlights.embedded_selected_rects);
+  }
+
+  if (priv->notes.list != NULL) {
+    girara_list_free(priv->notes.list);
+  }
+
+  if (priv->notes.selected_id != NULL) {
+    g_free(priv->notes.selected_id);
   }
 
   G_OBJECT_CLASS(zathura_page_widget_parent_class)->finalize(object);
@@ -823,6 +839,49 @@ static gboolean zathura_page_widget_draw(GtkWidget* widget, cairo_t* cairo) {
         }
       }
     }
+
+    /* Draw sticky note icons */
+    if (priv->notes.list != NULL) {
+      for (size_t idx = 0; idx != girara_list_size(priv->notes.list); ++idx) {
+        zathura_note_t* note = girara_list_nth(priv->notes.list, idx);
+        if (note == NULL) {
+          continue;
+        }
+
+        /* Transform note position using recalc_rectangle */
+        zathura_rectangle_t note_rect = {
+          .x1 = note->x,
+          .y1 = note->y,
+          .x2 = note->x + 1,
+          .y2 = note->y + 1
+        };
+        zathura_rectangle_t transformed = recalc_rectangle(priv->page, note_rect);
+
+        /* Draw note icon (small post-it style) */
+        double icon_x = transformed.x1;
+        double icon_y = transformed.y1;
+
+        /* Light yellow fill */
+        cairo_set_source_rgba(cairo, 1.0, 0.95, 0.6, 0.9);
+        cairo_rectangle(cairo, icon_x, icon_y, NOTE_ICON_SIZE, NOTE_ICON_SIZE);
+        cairo_fill(cairo);
+
+        /* Dark border */
+        cairo_set_source_rgba(cairo, 0.6, 0.5, 0.2, 0.9);
+        cairo_set_line_width(cairo, 1.0);
+        cairo_rectangle(cairo, icon_x, icon_y, NOTE_ICON_SIZE, NOTE_ICON_SIZE);
+        cairo_stroke(cairo);
+
+        /* Draw red border if this note is selected */
+        if (priv->notes.selected_id != NULL && note->id != NULL &&
+            g_strcmp0(note->id, priv->notes.selected_id) == 0) {
+          cairo_set_source_rgba(cairo, 1.0, 0.0, 0.0, 0.9);  /* Red border */
+          cairo_set_line_width(cairo, 2.0);
+          cairo_rectangle(cairo, icon_x - 1, icon_y - 1, NOTE_ICON_SIZE + 2, NOTE_ICON_SIZE + 2);
+          cairo_stroke(cairo);
+        }
+      }
+    }
   } else {
     girara_debug("rendering loading screen, flicker might be happening");
 
@@ -1112,6 +1171,87 @@ static gboolean cb_zathura_page_widget_button_press_event(GtkWidget* widget, Gdk
 
   if (girara_callback_view_button_press_event(widget, button, priv->zathura->ui.session) == true) {
     return true;
+  }
+
+  /* Check for note placement mode */
+  if (priv->zathura->global.note_placement_mode &&
+      button->button == GDK_BUTTON_PRIMARY && button->type == GDK_BUTTON_PRESS) {
+    /* Convert widget coordinates to PDF coordinates */
+    double scale = zathura_document_get_scale(document);
+    double page_height = zathura_page_get_height(priv->page);
+    double page_width = zathura_page_get_width(priv->page);
+    unsigned int rotation = zathura_document_get_rotation(document);
+
+    /* First divide by scale to get unscaled widget coords */
+    double x = button->x / scale;
+    double y = button->y / scale;
+
+    /* Then unrotate to get PDF coords */
+    double pdf_x, pdf_y;
+    switch (rotation) {
+    case 90:
+      pdf_x = page_height - y;
+      pdf_y = x;
+      break;
+    case 180:
+      pdf_x = page_width - x;
+      pdf_y = page_height - y;
+      break;
+    case 270:
+      pdf_x = y;
+      pdf_y = page_width - x;
+      break;
+    default:  /* 0 degrees */
+      pdf_x = x;
+      pdf_y = y;
+      break;
+    }
+
+    /* Get page index */
+    unsigned int page_index = zathura_page_get_index(priv->page);
+
+    /* Call handler to show popup (pass widget coords for popup positioning) */
+    sc_note_handle_placement_click(priv->zathura, widget, button->x, button->y,
+                                   page_index, pdf_x, pdf_y);
+
+    return TRUE;  /* Event handled */
+  }
+
+  /* Check if click is on an existing note icon */
+  if (button->button == GDK_BUTTON_PRIMARY && button->type == GDK_BUTTON_PRESS) {
+    if (priv->notes.list != NULL) {
+      for (size_t idx = 0; idx != girara_list_size(priv->notes.list); ++idx) {
+        zathura_note_t* note = girara_list_nth(priv->notes.list, idx);
+        if (note == NULL) {
+          continue;
+        }
+
+        /* Transform note position to widget coordinates (same as draw code) */
+        zathura_rectangle_t note_rect = {
+          .x1 = note->x,
+          .y1 = note->y,
+          .x2 = note->x + 1,
+          .y2 = note->y + 1
+        };
+        zathura_rectangle_t transformed = recalc_rectangle(priv->page, note_rect);
+
+        /* Check if click is within NOTE_ICON_SIZE of the note position */
+        double icon_x = transformed.x1;
+        double icon_y = transformed.y1;
+        if (button->x >= icon_x && button->x <= icon_x + NOTE_ICON_SIZE &&
+            button->y >= icon_y && button->y <= icon_y + NOTE_ICON_SIZE) {
+          /* Hit! Select this note and open popup for editing */
+          g_free(priv->notes.selected_id);
+          priv->notes.selected_id = g_strdup(note->id);
+          zathura_page_widget_redraw_canvas(page);
+
+          /* Open popup for editing (pass widget coords for popup positioning) */
+          sc_note_handle_edit_click(priv->zathura, widget, button->x, button->y, note);
+
+          return TRUE;  /* Event handled */
+        }
+      }
+    }
   }
 
   zathura_page_widget_clear_selection(page);
@@ -1613,6 +1753,10 @@ static void highlight_free_func(void* data) {
   zathura_highlight_free(data);
 }
 
+static void note_free_func(void* data) {
+  zathura_note_free(data);
+}
+
 void zathura_page_widget_add_highlight(ZathuraPage* widget, zathura_highlight_t* highlight) {
   g_return_if_fail(ZATHURA_IS_PAGE(widget));
   g_return_if_fail(highlight != NULL);
@@ -1692,4 +1836,58 @@ girara_list_t* zathura_page_widget_get_embedded_selected_rects(ZathuraPage* widg
   g_return_val_if_fail(ZATHURA_IS_PAGE(widget), NULL);
   ZathuraPagePrivate* priv = zathura_page_widget_get_instance_private(widget);
   return priv->highlights.embedded_selected_rects;
+}
+
+void zathura_page_widget_set_notes(ZathuraPage* widget, girara_list_t* notes) {
+  g_return_if_fail(ZATHURA_IS_PAGE(widget));
+  ZathuraPagePrivate* priv = zathura_page_widget_get_instance_private(widget);
+
+  /* Free old list if exists */
+  if (priv->notes.list != NULL) {
+    girara_list_free(priv->notes.list);
+  }
+
+  priv->notes.list = notes;
+  zathura_page_widget_redraw_canvas(widget);
+}
+
+void zathura_page_widget_add_note(ZathuraPage* widget, zathura_note_t* note) {
+  g_return_if_fail(ZATHURA_IS_PAGE(widget));
+  g_return_if_fail(note != NULL);
+  ZathuraPagePrivate* priv = zathura_page_widget_get_instance_private(widget);
+
+  /* Create list if it doesn't exist */
+  if (priv->notes.list == NULL) {
+    priv->notes.list = girara_list_new2(note_free_func);
+  }
+
+  girara_list_append(priv->notes.list, note);
+  zathura_page_widget_redraw_canvas(widget);
+}
+
+bool zathura_page_widget_remove_note(ZathuraPage* widget, const char* note_id) {
+  g_return_val_if_fail(ZATHURA_IS_PAGE(widget), false);
+  g_return_val_if_fail(note_id != NULL, false);
+  ZathuraPagePrivate* priv = zathura_page_widget_get_instance_private(widget);
+
+  if (priv->notes.list == NULL) {
+    return false;
+  }
+
+  for (size_t idx = 0; idx != girara_list_size(priv->notes.list); ++idx) {
+    zathura_note_t* note = girara_list_nth(priv->notes.list, idx);
+    if (note != NULL && note->id != NULL && g_strcmp0(note->id, note_id) == 0) {
+      girara_list_remove(priv->notes.list, note);
+      zathura_page_widget_redraw_canvas(widget);
+      return true;
+    }
+  }
+
+  return false;
+}
+
+girara_list_t* zathura_page_widget_get_notes(ZathuraPage* widget) {
+  g_return_val_if_fail(ZATHURA_IS_PAGE(widget), NULL);
+  ZathuraPagePrivate* priv = zathura_page_widget_get_instance_private(widget);
+  return priv->notes.list;
 }

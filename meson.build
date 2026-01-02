@@ -133,6 +133,7 @@ sources = files(
   'zathura/jumplist.c',
   'zathura/links.c',
   'zathura/marks.c',
+  'zathura/note-popup.c',
   'zathura/page.c',
   'zathura/page-widget.c',
   'zathura/plugin.c',

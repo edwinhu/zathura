@@ -153,3 +153,30 @@ void zathura_highlight_free(zathura_highlight_t* highlight) {
   }
   g_free(highlight);
 }
+
+zathura_note_t* zathura_note_new(unsigned int page, double x, double y, const char* content) {
+  zathura_note_t* note = g_try_malloc0(sizeof(zathura_note_t));
+  if (note == NULL) {
+    return NULL;
+  }
+
+  /* Generate UUID for id */
+  note->id = g_uuid_string_random();
+  note->page = page;
+  note->x = x;
+  note->y = y;
+  note->content = content != NULL ? g_strdup(content) : NULL;
+  note->created_at = time(NULL);
+
+  return note;
+}
+
+void zathura_note_free(zathura_note_t* note) {
+  if (note == NULL) {
+    return;
+  }
+
+  g_free(note->id);
+  g_free(note->content);
+  g_free(note);
+}

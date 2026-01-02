@@ -195,6 +195,45 @@ void cb_highlights_search_changed(GtkEditable* editable, void* data);
 gboolean cb_highlights_search_key_press(GtkWidget* widget, GdkEventKey* event, void* data);
 
 /**
+ * Called when a row is activated in the notes panel
+ *
+ * @param tree_view The tree view widget
+ * @param path The path of the activated row
+ * @param column The column that was activated
+ * @param data The zathura instance
+ */
+void cb_notes_row_activated(GtkTreeView* tree_view, GtkTreePath* path,
+                            GtkTreeViewColumn* column, void* data);
+
+/**
+ * Called when a key is pressed in the notes panel
+ *
+ * @param widget The tree view widget
+ * @param event The key event
+ * @param data The zathura instance
+ * @return TRUE if handled, FALSE otherwise
+ */
+gboolean cb_notes_key_press(GtkWidget* widget, GdkEventKey* event, void* data);
+
+/**
+ * Called when the notes search text changes
+ *
+ * @param editable The search entry
+ * @param data The filter model
+ */
+void cb_notes_search_changed(GtkEditable* editable, void* data);
+
+/**
+ * Called when a key is pressed in the notes search entry
+ *
+ * @param widget The search entry
+ * @param event The key event
+ * @param data The filter model
+ * @return TRUE if handled, FALSE otherwise
+ */
+gboolean cb_notes_search_key_press(GtkWidget* widget, GdkEventKey* event, void* data);
+
+/**
  * Called when input has been passed to the sc_follow dialog
  *
  * @param entry The dialog inputbar

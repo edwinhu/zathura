@@ -172,4 +172,42 @@ void zathura_page_widget_clear_selected_highlight(ZathuraPage* widget);
  */
 girara_list_t* zathura_page_widget_get_embedded_selected_rects(ZathuraPage* widget);
 
+/**
+ * Note icon size in pixels
+ */
+#define NOTE_ICON_SIZE 16.0
+
+/**
+ * Set notes for this page (takes ownership)
+ *
+ * @param widget the widget
+ * @param notes list of zathura_note_t* (ownership transferred)
+ */
+void zathura_page_widget_set_notes(ZathuraPage* widget, girara_list_t* notes);
+
+/**
+ * Add a single note to this page (takes ownership)
+ *
+ * @param widget the widget
+ * @param note the note to add (ownership transferred)
+ */
+void zathura_page_widget_add_note(ZathuraPage* widget, zathura_note_t* note);
+
+/**
+ * Remove a note from this page by ID
+ *
+ * @param widget the widget
+ * @param note_id the unique identifier of the note to remove
+ * @return true if note was found and removed, false otherwise
+ */
+bool zathura_page_widget_remove_note(ZathuraPage* widget, const char* note_id);
+
+/**
+ * Get notes for this page
+ *
+ * @param widget the widget
+ * @return list of zathura_note_t* or NULL if no notes
+ */
+girara_list_t* zathura_page_widget_get_notes(ZathuraPage* widget);
+
 #endif

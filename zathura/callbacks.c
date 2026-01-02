@@ -24,6 +24,7 @@
 #include "synctex.h"
 #include "dbus-interface.h"
 #include "database.h"
+#include "types.h"
 
 gboolean cb_destroy(GtkWidget* UNUSED(widget), zathura_t* zathura) {
   if (zathura_has_document(zathura) == true) {
@@ -467,6 +468,125 @@ void cb_highlights_search_changed(GtkEditable* UNUSED(editable), void* data) {
 }
 
 gboolean cb_highlights_search_key_press(GtkWidget* widget, GdkEventKey* event, void* data) {
+  GtkEntry* entry = GTK_ENTRY(widget);
+  GtkTreeModelFilter* filter = GTK_TREE_MODEL_FILTER(data);
+
+  // Toggle fuzzy/substring mode on Tab key
+  if (event->keyval == GDK_KEY_Tab) {
+    // Get current mode
+    gboolean fuzzy_mode = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(entry), "fuzzy_mode"));
+
+    // Toggle mode
+    fuzzy_mode = !fuzzy_mode;
+    g_object_set_data(G_OBJECT(entry), "fuzzy_mode", GINT_TO_POINTER(fuzzy_mode));
+
+    // Update placeholder text
+    if (fuzzy_mode) {
+      gtk_entry_set_placeholder_text(entry, "Search [Tab: exact]...");
+    } else {
+      gtk_entry_set_placeholder_text(entry, "Search [Tab: fuzzy]...");
+    }
+
+    // Refilter to apply new mode
+    gtk_tree_model_filter_refilter(filter);
+
+    return TRUE;  // Consume the event
+  }
+
+  return FALSE;  // Let other handlers process the event
+}
+
+void cb_notes_row_activated(GtkTreeView* tree_view, GtkTreePath* path,
+                            GtkTreeViewColumn* UNUSED(column), void* data) {
+  zathura_t* zathura = data;
+  GtkTreeModel* model = gtk_tree_view_get_model(tree_view);
+  GtkTreeIter iter;
+
+  if (gtk_tree_model_get_iter(model, &iter, path)) {
+    zathura_note_t* note = NULL;
+    gtk_tree_model_get(model, &iter, 2, &note, -1);
+
+    if (note != NULL) {
+      // Jump to page (do NOT close panel)
+      page_set(zathura, note->page);
+
+      // Optionally: open popup for editing
+      // For now, just jump to page
+    }
+  }
+}
+
+gboolean cb_notes_key_press(GtkWidget* widget, GdkEventKey* event, void* data) {
+  zathura_t* zathura = data;
+  GtkTreeView* tree_view = GTK_TREE_VIEW(widget);
+
+  // Handle Escape before selection check (works even with empty list)
+  if (event->keyval == GDK_KEY_Escape) {
+    gtk_widget_hide(zathura->ui.notes);
+    gtk_widget_grab_focus(zathura->ui.view);
+    return TRUE;
+  }
+
+  // Get selected row
+  GtkTreeSelection* selection = gtk_tree_view_get_selection(tree_view);
+  GtkTreeModel* model;
+  GtkTreeIter iter;
+
+  if (!gtk_tree_selection_get_selected(selection, &model, &iter)) {
+    return FALSE;
+  }
+
+  zathura_note_t* note = NULL;
+  gtk_tree_model_get(model, &iter, 2, &note, -1);
+
+  if (note == NULL) {
+    return FALSE;
+  }
+
+  const char* file_path = zathura_document_get_path(zathura->document);
+
+  switch (event->keyval) {
+    case GDK_KEY_x: {
+      // Delete note
+      char* id_copy = g_strdup(note->id);
+      if (zathura_db_remove_note(zathura->database, file_path, id_copy)) {
+        // Remove from page widget
+        zathura_page_t* page = zathura_document_get_page(zathura->document, note->page);
+        if (page != NULL) {
+          GtkWidget* page_widget = zathura_page_get_widget(zathura, page);
+          if (page_widget != NULL) {
+            zathura_page_widget_remove_note(ZATHURA_PAGE(page_widget), id_copy);
+          }
+        }
+        // Refresh panel by hiding and showing
+        gtk_widget_hide(zathura->ui.notes);
+        sc_toggle_notes(zathura->ui.session, NULL, NULL, 0);
+        girara_notify(zathura->ui.session, GIRARA_INFO, _("Note deleted"));
+      }
+      g_free(id_copy);
+      return TRUE;
+    }
+
+    case GDK_KEY_Return:
+    case GDK_KEY_KP_Enter: {
+      // Jump to page
+      page_set(zathura, note->page);
+      return TRUE;
+    }
+
+    default:
+      break;
+  }
+
+  return FALSE;
+}
+
+void cb_notes_search_changed(GtkEditable* UNUSED(editable), void* data) {
+  GtkTreeModelFilter* filter = GTK_TREE_MODEL_FILTER(data);
+  gtk_tree_model_filter_refilter(filter);
+}
+
+gboolean cb_notes_search_key_press(GtkWidget* widget, GdkEventKey* event, void* data) {
   GtkEntry* entry = GTK_ENTRY(widget);
   GtkTreeModelFilter* filter = GTK_TREE_MODEL_FILTER(data);
 

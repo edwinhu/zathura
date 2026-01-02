@@ -427,4 +427,55 @@ bool sc_confirm_embedded_delete(girara_session_t* session, girara_argument_t* ar
  */
 bool sc_cancel_embedded_delete(girara_session_t* session, girara_argument_t* argument, girara_event_t* event, unsigned int t);
 
+/**
+ * Enter note placement mode (press n, then click to place)
+ *
+ * @param session The used girara session
+ * @param argument The used argument
+ * @param event Girara event
+ * @param t Number of executions
+ * @return true if no error occurred otherwise false
+ */
+bool sc_note_create(girara_session_t* session, girara_argument_t* argument, girara_event_t* event, unsigned int t);
+
+/**
+ * Handle click to place note (called from page-widget when in note_placement_mode)
+ *
+ * @param zathura The zathura instance
+ * @param page_widget The page widget that was clicked
+ * @param widget_x X coordinate in widget space (for popup positioning)
+ * @param widget_y Y coordinate in widget space (for popup positioning)
+ * @param page Page number (0-indexed)
+ * @param x X coordinate (PDF units)
+ * @param y Y coordinate (PDF units)
+ */
+void sc_note_handle_placement_click(zathura_t* zathura, GtkWidget* page_widget,
+                                    double widget_x, double widget_y,
+                                    unsigned int page, double x, double y);
+
+/**
+ * Handle click on existing note to edit (called from page-widget)
+ *
+ * @param zathura The zathura instance
+ * @param page_widget The page widget containing the note
+ * @param widget_x X coordinate in widget space (for popup positioning)
+ * @param widget_y Y coordinate in widget space (for popup positioning)
+ * @param note The note that was clicked (not owned by callee)
+ */
+void sc_note_handle_edit_click(zathura_t* zathura, GtkWidget* page_widget,
+                               double widget_x, double widget_y,
+                               zathura_note_t* note);
+
+/**
+ * Toggle notes panel
+ *
+ * @param session The used girara session
+ * @param argument The used argument
+ * @param event Girara event
+ * @param t Number of executions
+ * @return true if no error occurred otherwise false
+ */
+bool sc_toggle_notes(girara_session_t* session, girara_argument_t* argument,
+                     girara_event_t* event, unsigned int t);
+
 #endif // SHORTCUTS_H

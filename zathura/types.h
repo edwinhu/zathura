@@ -357,6 +357,20 @@ struct zathura_highlight_s {
 typedef struct zathura_highlight_s zathura_highlight_t;
 
 /**
+ * Sticky note entry
+ */
+struct zathura_note_s {
+  char* id;              /**< Unique identifier (UUID) */
+  unsigned int page;     /**< Page number (0-indexed) */
+  double x;              /**< X coordinate (PDF units) */
+  double y;              /**< Y coordinate (PDF units) */
+  char* content;         /**< Note text content */
+  time_t created_at;     /**< Creation timestamp */
+};
+
+typedef struct zathura_note_s zathura_note_t;
+
+/**
  * Creates a new highlight
  *
  * @param page Page number
@@ -374,5 +388,23 @@ ZATHURA_PLUGIN_API zathura_highlight_t* zathura_highlight_new(unsigned int page,
  * @param highlight The highlight to free
  */
 ZATHURA_PLUGIN_API void zathura_highlight_free(zathura_highlight_t* highlight);
+
+/**
+ * Creates a new sticky note
+ *
+ * @param page Page number (0-indexed)
+ * @param x X coordinate (PDF units)
+ * @param y Y coordinate (PDF units)
+ * @param content Note text content (will be copied)
+ * @return New note or NULL on error
+ */
+ZATHURA_PLUGIN_API zathura_note_t* zathura_note_new(unsigned int page, double x, double y, const char* content);
+
+/**
+ * Frees a sticky note
+ *
+ * @param note The note to free
+ */
+ZATHURA_PLUGIN_API void zathura_note_free(zathura_note_t* note);
 
 #endif // TYPES_H

@@ -65,6 +65,12 @@ struct _ZathuraDatabaseInterface {
   bool (*remove_highlight)(ZathuraDatabase* db, const char* file, const char* id);
 
   girara_list_t* (*load_highlights)(ZathuraDatabase* db, const char* file);
+
+  bool (*add_note)(ZathuraDatabase* db, const char* file, zathura_note_t* note);
+
+  bool (*remove_note)(ZathuraDatabase* db, const char* file, const char* id);
+
+  girara_list_t* (*load_notes)(ZathuraDatabase* db, const char* file);
 };
 
 GType zathura_database_get_type(void) G_GNUC_CONST;
@@ -199,5 +205,34 @@ bool zathura_db_remove_highlight(ZathuraDatabase* db, const char* file, const ch
  * @return List of zathura_highlight_t* or NULL on failure.
  */
 girara_list_t* zathura_db_load_highlights(ZathuraDatabase* db, const char* file);
+
+/**
+ * Add a note to the database.
+ *
+ * @param db The database instance
+ * @param file The file to which the note belongs.
+ * @param note The note to add.
+ * @return true on success, false otherwise.
+ */
+bool zathura_db_add_note(ZathuraDatabase* db, const char* file, zathura_note_t* note);
+
+/**
+ * Remove a note from the database.
+ *
+ * @param db The database instance
+ * @param file The file to which the note belongs.
+ * @param id The note id to remove.
+ * @return true on success, false otherwise.
+ */
+bool zathura_db_remove_note(ZathuraDatabase* db, const char* file, const char* id);
+
+/**
+ * Load all notes for a file from the database.
+ *
+ * @param db The database instance
+ * @param file The file to load notes for.
+ * @return List of zathura_note_t* or NULL on failure.
+ */
+girara_list_t* zathura_db_load_notes(ZathuraDatabase* db, const char* file);
 
 #endif // DATABASE_H

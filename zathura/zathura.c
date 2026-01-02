@@ -53,6 +53,7 @@
 #include "resources.h"
 #include "synctex.h"
 #include "content-type.h"
+#include "note-popup.h"
 
 typedef struct zathura_document_info_s {
   zathura_t* zathura;
@@ -95,6 +96,7 @@ zathura_t* zathura_create(void) {
   zathura->global.synctex_edit_modmask = GDK_CONTROL_MASK;
   zathura->global.highlighter_modmask  = GDK_SHIFT_MASK;
   zathura->global.double_click_follow  = true;
+  zathura->global.note_placement_mode  = false;
 
   /* initialize with default paths */
   {
@@ -437,6 +439,9 @@ bool zathura_init(zathura_t* zathura) {
     girara_error("Failed to initialize UI.");
     goto error_free;
   }
+
+  /* Note popup widget */
+  zathura->ui.note_popup = zathura_note_popup_new(zathura);
 
   /* database */
   if (init_database(zathura) == false) {
@@ -1264,6 +1269,40 @@ bool document_open(zathura_t* zathura, const char* path, const char* uri, const 
       }
       girara_list_free(all_highlights);
     }
+
+    /* Load persistent notes from database */
+    girara_list_t* all_notes = zathura_db_load_notes(zathura->database, file_path);
+    if (all_notes != NULL && girara_list_size(all_notes) > 0) {
+      /* Create a list for each page */
+      girara_list_t** page_notes = g_try_malloc0_n(number_of_pages, sizeof(girara_list_t*));
+      if (page_notes != NULL) {
+        /* Distribute notes to page lists */
+        for (size_t i = 0; i < girara_list_size(all_notes); i++) {
+          zathura_note_t* note = girara_list_nth(all_notes, i);
+          if (note != NULL && note->page < number_of_pages) {
+            if (page_notes[note->page] == NULL) {
+              page_notes[note->page] = girara_list_new();
+            }
+            /* Copy note to page list */
+            zathura_note_t* copy = zathura_note_new(note->page, note->x, note->y, note->content);
+            if (copy != NULL) {
+              g_free(copy->id); /* Free auto-generated ID */
+              copy->id = g_strdup(note->id);
+              copy->created_at = note->created_at;
+              girara_list_append(page_notes[note->page], copy);
+            }
+          }
+        }
+        /* Set notes on page widgets */
+        for (unsigned int i = 0; i < number_of_pages; i++) {
+          if (page_notes[i] != NULL) {
+            zathura_page_widget_set_notes(ZATHURA_PAGE(zathura->pages[i]), page_notes[i]);
+          }
+        }
+        g_free(page_notes);
+      }
+      girara_list_free(all_notes);
+    }
   }
 
   /* Set page */
@@ -1480,6 +1519,12 @@ bool document_close(zathura_t* zathura, bool keep_monitor) {
   if (zathura->global.marks != NULL) {
     girara_list_free(zathura->global.marks);
     zathura->global.marks = NULL;
+  }
+
+  /* reset note-related state */
+  zathura->global.note_placement_mode = false;
+  if (zathura->ui.note_popup != NULL) {
+    zathura_note_popup_hide(zathura->ui.note_popup);
   }
 
   zathura_jumplist_clear(zathura);
