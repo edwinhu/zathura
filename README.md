@@ -58,6 +58,48 @@ To build and install zathura using meson's ninja backend:
 > **Note:** The default backend for meson might vary based on the platform. Please
 refer to the meson documentation for platform specific dependencies.
 
+Highlights Feature (Fork Addition)
+----------------------------------
+
+This fork adds comprehensive highlight management features:
+
+### Creating Highlights
+
+Select text and press:
+* `h` - Yellow highlight
+* `j` - Green highlight
+* `k` - Blue highlight
+* `l` - Red highlight
+
+### Managing Highlights
+
+* `:highlights` - Open highlights panel with fuzzy search
+  * Type to search highlight text
+  * Enter to jump to highlight
+  * `d` or `x` to delete
+  * `c` to cycle color
+  * Escape to close
+
+### Import/Export
+
+* `:hlimport` - Import embedded PDF annotations (from Preview, Acrobat, etc.)
+* `:hlexport [path]` - Export highlights as PDF annotations
+* `:hldelete` - Delete embedded PDF annotations
+
+### Readwise Integration
+
+* `:readwise_sync` - Sync highlights to Readwise API
+  * Requires `READWISE_TOKEN` environment variable
+  * Get token from https://readwise.io/access_token
+
+### Database
+
+Highlights are stored in SQLite at `~/.local/share/zathura/bookmarks.sqlite`.
+
+### Additional Dependencies
+
+* `libcurl` - For Readwise API integration
+
 Bugs
 ----
 

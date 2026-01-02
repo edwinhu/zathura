@@ -36,3 +36,10 @@ compile_commands.json
 .ycm_extra_conf.py
 _*/
 .env
+
+# Claude Code development artifacts
+.claude/
+SPEC.md
+LEARNINGS*.md
+plugins/
+tries/
