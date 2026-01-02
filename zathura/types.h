@@ -365,7 +365,7 @@ typedef struct zathura_highlight_s zathura_highlight_t;
  * @param text Selected text (will be copied)
  * @return New highlight or NULL on error
  */
-zathura_highlight_t* zathura_highlight_new(unsigned int page, girara_list_t* rects,
+ZATHURA_PLUGIN_API zathura_highlight_t* zathura_highlight_new(unsigned int page, girara_list_t* rects,
                                            zathura_highlight_color_t color, const char* text);
 
 /**
@@ -373,6 +373,6 @@ zathura_highlight_t* zathura_highlight_new(unsigned int page, girara_list_t* rec
  *
  * @param highlight The highlight to free
  */
-void zathura_highlight_free(zathura_highlight_t* highlight);
+ZATHURA_PLUGIN_API void zathura_highlight_free(zathura_highlight_t* highlight);
 
 #endif // TYPES_H

@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: Zlib */
 
 #include <glib/gi18n.h>
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -120,6 +121,106 @@ bool cmd_highlights(girara_session_t* session, girara_list_t* GIRARA_UNUSED(argu
   g_return_val_if_fail(session != NULL, false);
   g_return_val_if_fail(session->global.data != NULL, false);
   return sc_toggle_highlights(session, NULL, NULL, 0);
+}
+
+static bool rects_match(girara_list_t* rects1, girara_list_t* rects2) {
+  if (rects1 == NULL || rects2 == NULL) {
+    return false;
+  }
+  if (girara_list_size(rects1) != girara_list_size(rects2)) {
+    return false;
+  }
+  for (size_t i = 0; i < girara_list_size(rects1); i++) {
+    zathura_rectangle_t* r1 = girara_list_nth(rects1, i);
+    zathura_rectangle_t* r2 = girara_list_nth(rects2, i);
+    if (r1 == NULL || r2 == NULL) {
+      return false;
+    }
+    /* Allow small floating point tolerance */
+    const double eps = 0.5;
+    if (fabs(r1->x1 - r2->x1) > eps || fabs(r1->y1 - r2->y1) > eps ||
+        fabs(r1->x2 - r2->x2) > eps || fabs(r1->y2 - r2->y2) > eps) {
+      return false;
+    }
+  }
+  return true;
+}
+
+static bool highlight_exists(girara_list_t* existing, zathura_highlight_t* hl) {
+  if (existing == NULL || hl == NULL) {
+    return false;
+  }
+  GIRARA_LIST_FOREACH_BODY(existing, zathura_highlight_t*, existing_hl,
+    if (existing_hl->page == hl->page && rects_match(existing_hl->rects, hl->rects)) {
+      return true;
+    }
+  );
+  return false;
+}
+
+bool cmd_highlights_import(girara_session_t* session, girara_list_t* GIRARA_UNUSED(argument_list)) {
+  g_return_val_if_fail(session != NULL, false);
+  g_return_val_if_fail(session->global.data != NULL, false);
+  zathura_t* zathura = session->global.data;
+
+  girara_debug("cmd_highlights_import called");
+
+  if (zathura->document == NULL) {
+    girara_notify(session, GIRARA_ERROR, _("No document opened."));
+    return false;
+  }
+
+  unsigned int imported = 0;
+  unsigned int num_pages = zathura_document_get_number_of_pages(zathura->document);
+  const char* file_path = zathura_document_get_path(zathura->document);
+
+  girara_debug("Processing %u pages", num_pages);
+
+  girara_list_t* existing_highlights = NULL;
+  if (zathura->database != NULL && file_path != NULL) {
+    existing_highlights = zathura_db_load_highlights(zathura->database, file_path);
+  }
+
+  for (unsigned int page_id = 0; page_id < num_pages; page_id++) {
+    zathura_page_t* page = zathura_document_get_page(zathura->document, page_id);
+    if (page == NULL) {
+      continue;
+    }
+
+    girara_list_t* annotations = zathura_page_get_annotations(page, NULL);
+    girara_debug("Page %u: got %zu annotations", page_id, annotations ? girara_list_size(annotations) : 0);
+    if (annotations == NULL) {
+      continue;
+    }
+
+    GIRARA_LIST_FOREACH_BODY(annotations, zathura_highlight_t*, hl,
+      if (hl != NULL) {
+        /* Skip if highlight with same geometry already exists */
+        if (highlight_exists(existing_highlights, hl)) {
+          continue;
+        }
+        // Save to database (permanent)
+        if (zathura->database != NULL && file_path != NULL) {
+          zathura_db_add_highlight(zathura->database, file_path, hl);
+        }
+        // Add to page widget for immediate display
+        GtkWidget* page_widget = zathura_page_get_widget(zathura, page);
+        if (page_widget != NULL) {
+          zathura_page_widget_add_highlight(ZATHURA_PAGE(page_widget), hl);
+        }
+        imported++;
+      }
+    );
+    girara_list_free(annotations);
+  }
+
+  if (existing_highlights != NULL) {
+    girara_list_free(existing_highlights);
+  }
+
+  girara_debug("Import complete: %u highlights", imported);
+  girara_notify(session, GIRARA_INFO, _("Imported %u highlights"), imported);
+  return true;
 }
 
 bool cmd_bookmark_open(girara_session_t* session, girara_list_t* argument_list) {

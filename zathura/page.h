@@ -246,4 +246,14 @@ ZATHURA_PLUGIN_API bool zathura_page_label_is_number(zathura_page_t* page);
  */
 ZATHURA_PLUGIN_API girara_list_t* zathura_page_get_signatures(zathura_page_t* page, zathura_error_t* error);
 
+/**
+ * Get text markup annotations from a page
+ *
+ * @param page Page
+ * @param error Set to an error value (see \ref zathura_error_t) if an error
+ *    occurred.
+ * @return List of annotations
+ */
+ZATHURA_PLUGIN_API girara_list_t* zathura_page_get_annotations(zathura_page_t* page, zathura_error_t* error);
+
 #endif // PAGE_H

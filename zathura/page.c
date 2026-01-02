@@ -391,3 +391,33 @@ girara_list_t* zathura_page_get_signatures(zathura_page_t* page, zathura_error_t
 
   return ret;
 }
+
+girara_list_t* zathura_page_get_annotations(zathura_page_t* page, zathura_error_t* error) {
+  if (page == NULL || page->document == NULL) {
+    if (error) {
+      *error = ZATHURA_ERROR_INVALID_ARGUMENTS;
+    }
+    return NULL;
+  }
+
+  const zathura_plugin_t* plugin              = zathura_document_get_plugin(page->document);
+  const zathura_plugin_functions_t* functions = zathura_plugin_get_functions(plugin);
+  if (functions->page_get_annotations == NULL) {
+    if (error) {
+      *error = ZATHURA_ERROR_NOT_IMPLEMENTED;
+    }
+    return NULL;
+  }
+
+  zathura_error_t e  = ZATHURA_ERROR_OK;
+  girara_list_t* ret = functions->page_get_annotations(page, page->data, &e);
+  if (e != ZATHURA_ERROR_OK) {
+    if (error) {
+      *error = e;
+    }
+    girara_list_free(ret);
+    return NULL;
+  }
+
+  return ret;
+}
