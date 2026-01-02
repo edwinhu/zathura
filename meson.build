@@ -54,8 +54,9 @@ json_glib = dependency('json-glib-1.0')
 cairo = dependency('cairo')
 magic = dependency('libmagic')
 sqlite = dependency('sqlite3', version: '>=3.6.23')
+libcurl = dependency('libcurl')
 
-build_dependencies = [libm, girara, glib, gio, gthread, gmodule, gtk3, cairo, magic, json_glib]
+build_dependencies = [libm, girara, glib, gio, gthread, gmodule, gtk3, cairo, magic, json_glib, libcurl]
 
 if host_machine.system() == 'darwin'
   gtk_mac_integration = dependency('gtk-mac-integration-gtk3')
@@ -136,6 +137,7 @@ sources = files(
   'zathura/page-widget.c',
   'zathura/plugin.c',
   'zathura/print.c',
+  'zathura/readwise.c',
   'zathura/render.c',
   'zathura/shortcuts.c',
   'zathura/synctex.c',
