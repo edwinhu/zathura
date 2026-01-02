@@ -39,7 +39,6 @@ _*/
 
 # Claude Code development artifacts
 .claude/
-SPEC.md
 LEARNINGS*.md
 plugins/
 tries/
