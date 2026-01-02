@@ -88,6 +88,15 @@ bool cmd_highlights_export(girara_session_t* session, girara_list_t* argument_li
 bool cmd_highlights_delete_embedded(girara_session_t* session, girara_list_t* argument_list);
 
 /**
+ * Sync highlights to Readwise API
+ *
+ * @param session The used girara session
+ * @param argument_list List of passed arguments
+ * @return true if no error occurred
+ */
+bool cmd_readwise_sync(girara_session_t* session, girara_list_t* argument_list);
+
+/**
  * Close zathura
  *
  * @param session The used girara session

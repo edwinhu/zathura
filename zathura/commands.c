@@ -17,6 +17,7 @@
 #include "page.h"
 #include "plugin.h"
 #include "print.h"
+#include "readwise.h"
 #include "render.h"
 #include "shortcuts.h"
 #include "utils.h"
@@ -442,6 +443,63 @@ bool cmd_highlights_delete_embedded(girara_session_t* session, girara_list_t* GI
   /* No highlight selected */
   girara_notify(session, GIRARA_WARNING, _("Click on an embedded highlight first, then run :hldelete"));
   return false;
+}
+
+bool cmd_readwise_sync(girara_session_t* session, girara_list_t* GIRARA_UNUSED(argument_list)) {
+  g_return_val_if_fail(session != NULL, false);
+  g_return_val_if_fail(session->global.data != NULL, false);
+  zathura_t* zathura = session->global.data;
+
+  if (zathura->document == NULL) {
+    girara_notify(session, GIRARA_ERROR, _("No document opened."));
+    return false;
+  }
+
+  /* Load highlights from database */
+  const char* file_path = zathura_document_get_path(zathura->document);
+  girara_list_t* highlights = zathura_db_load_highlights(zathura->database, file_path);
+
+  if (highlights == NULL || girara_list_size(highlights) == 0) {
+    girara_notify(session, GIRARA_INFO, _("No highlights to sync."));
+    if (highlights != NULL) {
+      girara_list_free(highlights);
+    }
+    return true;
+  }
+
+  /* Extract document metadata */
+  const char* title = NULL;
+  const char* author = NULL;
+
+  girara_list_t* info = zathura_document_get_information(zathura->document, NULL);
+  if (info != NULL) {
+    GIRARA_LIST_FOREACH_BODY(info, zathura_document_information_entry_t*, entry,
+      if (entry->type == ZATHURA_DOCUMENT_INFORMATION_TITLE && entry->value != NULL) {
+        title = entry->value;
+      } else if (entry->type == ZATHURA_DOCUMENT_INFORMATION_AUTHOR && entry->value != NULL) {
+        author = entry->value;
+      }
+    );
+  }
+
+  /* Fallback to filename if no title */
+  if (title == NULL || strlen(title) == 0) {
+    title = zathura_document_get_basename(zathura->document);
+  }
+
+  /* Sync to Readwise */
+  readwise_result_t result = readwise_sync_highlights(highlights, title, author);
+
+  /* Report result */
+  if (result == READWISE_OK) {
+    girara_notify(session, GIRARA_INFO, _("Synced %zu highlights to Readwise."),
+                  girara_list_size(highlights));
+  } else {
+    girara_notify(session, GIRARA_ERROR, "%s", readwise_result_message(result));
+  }
+
+  girara_list_free(highlights);
+  return result == READWISE_OK;
 }
 
 bool cmd_bookmark_open(girara_session_t* session, girara_list_t* argument_list) {
