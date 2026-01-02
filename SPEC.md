@@ -250,3 +250,125 @@ rect.y2 = page_height - r.y0;
 7. Close and reopen document - verify highlights persisted
 8. Run `:hlimport` again - verify no duplicates created
 9. Test on PDF with no annotations - verify "Imported 0"
+
+---
+
+# SPEC: Export Highlights to PDF (Phase 2)
+
+**Status: COMPLETE** (2026-01-02)
+
+## Feature
+
+`:hlexport [path]` command exports zathura highlights as embedded PDF highlight annotations.
+
+## User Flow
+
+```
+1. User has highlights in zathura (native or imported)
+2. User runs :hlexport [optional path]
+   - If path provided: save to that path
+   - If no path: overwrite current file in place
+3. Highlights are written as PDF highlight annotations
+4. PDF is saved
+5. Notification: "Exported N highlights"
+6. Highlights now visible in other PDF readers
+```
+
+## Scope
+
+| Item | In Scope | Out of Scope |
+|------|----------|--------------|
+| `:hlexport` command | Yes | Auto-export on close |
+| Write to current file | Yes | Prompt before overwrite |
+| Write to custom path | Yes | Directory creation |
+| Geometry-based deduplication | Yes | Content-based dedup |
+| Color mapping | Yes | Custom colors |
+
+## Architecture
+
+```
+:hlexport [path] → zathura_db_load_highlights()
+                 → for each page:
+                     → zathura_page_get_annotations() (for dedup)
+                     → filter new highlights
+                     → zathura_page_export_annotations()
+                 → zathura_document_save_as(path)
+                 → notify user: "Exported N highlights"
+```
+
+## Files Modified
+
+### Zathura Core
+
+| File | Changes |
+|------|---------|
+| `zathura/plugin-api.h` | Add `zathura_plugin_page_export_annotations_t` typedef |
+| `zathura/page.h` | Declare `zathura_page_export_annotations()` |
+| `zathura/page.c` | Implement dispatch wrapper |
+| `zathura/commands.c` | Add `cmd_highlights_export()` |
+| `zathura/commands.h` | Declare `cmd_highlights_export()` |
+| `zathura/config.c` | Register `:hlexport` command |
+
+### MuPDF Plugin
+
+| File | Changes |
+|------|---------|
+| `annotations.c` | Add `pdf_page_export_annotations()` |
+| `plugin.h` | Declare export function |
+| `plugin.c` | Register in function table |
+
+## Key Technical Details
+
+### Coordinate Conversion (Zathura → PDF)
+
+```c
+// Zathura: origin top-left, Y down
+// PDF: origin bottom-left, Y up
+fz_quad quad;
+quad.ul.x = rect->x1; quad.ul.y = page_height - rect->y1;
+quad.ur.x = rect->x2; quad.ur.y = page_height - rect->y1;
+quad.ll.x = rect->x1; quad.ll.y = page_height - rect->y2;
+quad.lr.x = rect->x2; quad.lr.y = page_height - rect->y2;
+```
+
+### Color Mapping (Zathura → PDF RGB)
+
+```c
+ZATHURA_HIGHLIGHT_YELLOW → {1.0, 1.0, 0.0}
+ZATHURA_HIGHLIGHT_GREEN  → {0.0, 1.0, 0.0}
+ZATHURA_HIGHLIGHT_BLUE   → {0.0, 0.5, 1.0}
+ZATHURA_HIGHLIGHT_RED    → {1.0, 0.0, 0.0}
+```
+
+### MuPDF API Usage
+
+```c
+pdf_annot* annot = pdf_create_annot(ctx, ppage, PDF_ANNOT_HIGHLIGHT);
+pdf_set_annot_quad_points(ctx, annot, num_quads, quads);
+pdf_set_annot_color(ctx, annot, 3, color);
+pdf_set_annot_contents(ctx, annot, text);
+pdf_update_annot(ctx, annot);
+```
+
+## Acceptance Criteria
+
+- [x] `:hlexport` command exists
+- [x] Exports all zathura highlights to PDF annotations
+- [x] Correct color mapping (Y/G/B/R)
+- [x] Correct coordinate conversion
+- [x] Text content preserved in annotation
+- [x] No duplicates on re-export (geometry-based deduplication)
+- [x] Optional path argument works
+- [x] Default: overwrites current file
+- [x] Works with other PDF readers (verified with PyMuPDF)
+
+## Test Plan
+
+1. Create highlights in zathura
+2. Run `:hlexport`
+3. Verify notification shows export count
+4. Open PDF in another viewer - verify annotations visible
+5. Verify colors are correct
+6. Verify text content is preserved
+7. Run `:hlexport` again - verify no duplicates
+8. Test `:hlexport /tmp/test.pdf` - verify saves to path
