@@ -119,6 +119,12 @@ typedef zathura_error_t (*zathura_plugin_page_get_label_t)(zathura_page_t* page,
  */
 typedef girara_list_t* (*zathura_plugin_page_get_signatures)(zathura_page_t* page, void* data, zathura_error_t* error);
 
+/**
+ * Get text markup annotations from a page
+ */
+typedef girara_list_t* (*zathura_plugin_page_get_annotations_t)(zathura_page_t* page, void* data,
+                                                                  zathura_error_t* error);
+
 struct zathura_plugin_functions_s {
   /**
    * Opens a document
@@ -214,6 +220,11 @@ struct zathura_plugin_functions_s {
    * Get signatures.
    */
   zathura_plugin_page_get_signatures page_get_signatures;
+
+  /**
+   * Get text markup annotations.
+   */
+  zathura_plugin_page_get_annotations_t page_get_annotations;
 };
 
 typedef struct zathura_plugin_version_s {
