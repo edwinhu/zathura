@@ -197,6 +197,7 @@ bool cmd_highlights_import(girara_session_t* session, girara_list_t* GIRARA_UNUS
       if (hl != NULL) {
         /* Skip if highlight with same geometry already exists */
         if (highlight_exists(existing_highlights, hl)) {
+          zathura_highlight_free(hl);
           continue;
         }
         // Save to database (permanent)
