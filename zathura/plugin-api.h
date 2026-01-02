@@ -125,6 +125,12 @@ typedef girara_list_t* (*zathura_plugin_page_get_signatures)(zathura_page_t* pag
 typedef girara_list_t* (*zathura_plugin_page_get_annotations_t)(zathura_page_t* page, void* data,
                                                                   zathura_error_t* error);
 
+/**
+ * Export highlights to page as PDF annotations
+ */
+typedef zathura_error_t (*zathura_plugin_page_export_annotations_t)(
+    zathura_page_t* page, void* data, girara_list_t* highlights);
+
 struct zathura_plugin_functions_s {
   /**
    * Opens a document
@@ -225,6 +231,11 @@ struct zathura_plugin_functions_s {
    * Get text markup annotations.
    */
   zathura_plugin_page_get_annotations_t page_get_annotations;
+
+  /**
+   * Export highlights to page as PDF annotations.
+   */
+  zathura_plugin_page_export_annotations_t page_export_annotations;
 };
 
 typedef struct zathura_plugin_version_s {

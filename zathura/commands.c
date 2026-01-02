@@ -223,6 +223,114 @@ bool cmd_highlights_import(girara_session_t* session, girara_list_t* GIRARA_UNUS
   return true;
 }
 
+bool cmd_highlights_export(girara_session_t* session, girara_list_t* argument_list) {
+  g_return_val_if_fail(session != NULL, false);
+  zathura_t* zathura = session->global.data;
+
+  if (zathura->document == NULL) {
+    girara_notify(session, GIRARA_ERROR, _("No document opened."));
+    return false;
+  }
+
+  /* Get output path - use argument if provided, otherwise use current path */
+  const char* output_path = NULL;
+  if (argument_list != NULL && girara_list_size(argument_list) > 0) {
+    output_path = girara_list_nth(argument_list, 0);
+  } else {
+    output_path = zathura_document_get_path(zathura->document);
+  }
+
+  if (output_path == NULL) {
+    girara_notify(session, GIRARA_ERROR, _("No output path."));
+    return false;
+  }
+
+  /* Load all highlights from database */
+  const char* file_path = zathura_document_get_path(zathura->document);
+  girara_list_t* highlights = zathura_db_load_highlights(zathura->database, file_path);
+  if (highlights == NULL || girara_list_size(highlights) == 0) {
+    girara_notify(session, GIRARA_INFO, _("Exported 0 highlights (none in database)"));
+    if (highlights != NULL) {
+      girara_list_free(highlights);
+    }
+    return true;
+  }
+
+  /* Load existing PDF annotations for deduplication */
+  unsigned int num_pages = zathura_document_get_number_of_pages(zathura->document);
+
+  /* Create list to track which pages have annotations already */
+  girara_list_t** existing_by_page = g_malloc0(num_pages * sizeof(girara_list_t*));
+  for (unsigned int page_id = 0; page_id < num_pages; page_id++) {
+    zathura_page_t* page = zathura_document_get_page(zathura->document, page_id);
+    existing_by_page[page_id] = zathura_page_get_annotations(page, NULL);
+  }
+
+  /* Filter highlights to only those not already in PDF */
+  girara_list_t* to_export = girara_list_new();
+  unsigned int skipped = 0;
+
+  GIRARA_LIST_FOREACH_BODY(highlights, zathura_highlight_t*, hl,
+    unsigned int page_id = hl->page;
+    if (page_id < num_pages && existing_by_page[page_id] != NULL) {
+      if (highlight_exists(existing_by_page[page_id], hl)) {
+        skipped++;
+        continue;
+      }
+    }
+    girara_list_append(to_export, hl);
+  );
+
+  /* Export highlights page by page */
+  unsigned int exported = 0;
+  for (unsigned int page_id = 0; page_id < num_pages; page_id++) {
+    /* Get highlights for this page */
+    girara_list_t* page_highlights = girara_list_new();
+
+    GIRARA_LIST_FOREACH_BODY(to_export, zathura_highlight_t*, hl,
+      if (hl->page == page_id) {
+        girara_list_append(page_highlights, hl);
+      }
+    );
+
+    if (girara_list_size(page_highlights) > 0) {
+      zathura_page_t* page = zathura_document_get_page(zathura->document, page_id);
+      zathura_error_t error = zathura_page_export_annotations(page, page_highlights);
+      if (error == ZATHURA_ERROR_OK) {
+        exported += girara_list_size(page_highlights);
+      }
+    }
+
+    girara_list_free(page_highlights);
+  }
+
+  /* Clean up existing annotations lists */
+  for (unsigned int page_id = 0; page_id < num_pages; page_id++) {
+    if (existing_by_page[page_id] != NULL) {
+      girara_list_free(existing_by_page[page_id]);
+    }
+  }
+  g_free(existing_by_page);
+  girara_list_free(to_export);
+  girara_list_free(highlights);
+
+  /* Save document if any highlights were exported */
+  if (exported > 0) {
+    zathura_error_t error = zathura_document_save_as(zathura->document, output_path);
+    if (error != ZATHURA_ERROR_OK) {
+      girara_notify(session, GIRARA_ERROR, _("Failed to save document"));
+      return false;
+    }
+  }
+
+  if (skipped > 0) {
+    girara_notify(session, GIRARA_INFO, _("Exported %u highlights (%u already existed)"), exported, skipped);
+  } else {
+    girara_notify(session, GIRARA_INFO, _("Exported %u highlights"), exported);
+  }
+  return true;
+}
+
 bool cmd_bookmark_open(girara_session_t* session, girara_list_t* argument_list) {
   g_return_val_if_fail(session != NULL, false);
   g_return_val_if_fail(session->global.data != NULL, false);

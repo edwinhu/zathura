@@ -256,4 +256,13 @@ ZATHURA_PLUGIN_API girara_list_t* zathura_page_get_signatures(zathura_page_t* pa
  */
 ZATHURA_PLUGIN_API girara_list_t* zathura_page_get_annotations(zathura_page_t* page, zathura_error_t* error);
 
+/**
+ * Export highlights to page as PDF annotations
+ *
+ * @param page The page
+ * @param highlights List of zathura_highlight_t* to export
+ * @return ZATHURA_ERROR_OK or error code
+ */
+zathura_error_t zathura_page_export_annotations(zathura_page_t* page, girara_list_t* highlights);
+
 #endif // PAGE_H
