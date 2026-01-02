@@ -204,27 +204,22 @@ In `plugins/zathura-pdf-mupdf/plugin.c`, add to function table:
 
 ### Coordinate Transform
 
-PDF: origin bottom-left, Y up. Zathura: origin top-left, Y down.
+**Note:** No Y-flip needed! The rendering pipeline (`recalc_rectangle`) handles all transformations. Use raw PDF coordinates directly, same as `select.c` does for native selections.
 
 ```c
-zathura_y = page_height - pdf_y;
-```
-
-### QuadPoints to Rectangle
-
-```c
+// Use PDF coordinates directly (like select.c)
 fz_rect r = fz_rect_from_quad(quad);
 rect.x1 = r.x0;
-rect.y1 = page_height - r.y1;
 rect.x2 = r.x1;
-rect.y2 = page_height - r.y0;
+rect.y1 = r.y0;
+rect.y2 = r.y1;
 ```
 
 ### Memory Ownership
 
-- `page_get_annotations()` returns `girara_list_t*` **owned by caller**
-- Each `zathura_highlight_t*` in list **owned by list**
-- Caller transfers highlights to page widget, then frees empty list
+- `page_get_annotations()` returns `girara_list_t*` **owned by caller** (no auto-free)
+- Caller transfers highlights to page widget (widget takes ownership)
+- Caller must free skipped highlights (duplicates) manually
 
 ## Acceptance Criteria
 
@@ -321,14 +316,15 @@ rect.y2 = page_height - r.y0;
 
 ### Coordinate Conversion (Zathura → PDF)
 
+**Note:** Since we store raw PDF coordinates (no Y-flip), export maps directly:
+
 ```c
-// Zathura: origin top-left, Y down
-// PDF: origin bottom-left, Y up
+// Direct mapping - coordinates already in PDF space
 fz_quad quad;
-quad.ul.x = rect->x1; quad.ul.y = page_height - rect->y1;
-quad.ur.x = rect->x2; quad.ur.y = page_height - rect->y1;
-quad.ll.x = rect->x1; quad.ll.y = page_height - rect->y2;
-quad.lr.x = rect->x2; quad.lr.y = page_height - rect->y2;
+quad.ul.x = rect->x1; quad.ul.y = rect->y2;  // upper-left (larger y)
+quad.ur.x = rect->x2; quad.ur.y = rect->y2;  // upper-right
+quad.ll.x = rect->x1; quad.ll.y = rect->y1;  // lower-left (smaller y)
+quad.lr.x = rect->x2; quad.lr.y = rect->y1;  // lower-right
 ```
 
 ### Color Mapping (Zathura → PDF RGB)
@@ -381,41 +377,49 @@ pdf_update_annot(ctx, annot);
 
 ## Feature
 
-`:hldelete` command deletes the currently selected embedded PDF annotation from the PDF file.
+Delete embedded PDF annotations using the same workflow as database highlights:
+- Click to select (red border appears)
+- Press `x` to delete
 
 ## User Flow
 
 ```
 1. User opens PDF with embedded highlights
-2. User clicks on an embedded highlight to select it
-3. User runs :hldelete
+2. User clicks on an embedded highlight to select it (red border appears)
+3. User presses 'x' key
 4. Annotation is deleted from PDF
 5. Document is saved automatically
-6. Notification: "Embedded annotation deleted."
+6. Notification: "Embedded annotation deleted from PDF."
 ```
 
 ## Scope
 
 | Item | In Scope | Out of Scope |
 |------|----------|--------------|
-| `:hldelete` command | Yes | Batch delete |
-| Delete embedded PDF annotations | Yes | Delete database highlights |
-| Click-to-select target | Yes | Multi-select |
+| Click-to-select embedded annotations | Yes | Multi-select |
+| Visual selection cue (red border) | Yes | Custom border style |
+| Delete with 'x' key | Yes | Batch delete |
 | Auto-save after delete | Yes | Prompt before save |
+| `:hldelete` command (alternative) | Yes | - |
 
 ## Architecture
 
 ```
-:hldelete → find page with selected highlight
-          → check if in database (reject if so)
-          → get highlight geometry (rects)
-          → zathura_page_delete_annotation(page, rects)
-              → plugin: pdf_page_delete_annotation()
-              → iterate annotations, match geometry
-              → pdf_delete_annot(ctx, ppage, annot)
-          → zathura_document_save_as(document, path)
-          → clear selection, remove from widget
-          → notify user
+Click on embedded annotation:
+  → zathura_page_get_annotations() to find embedded highlights
+  → Check if click intersects any annotation rectangle
+  → Store selected rectangles in embedded_selected_rects
+  → Redraw with red border
+
+Press 'x' key (sc_delete_highlight):
+  → Check for embedded_selected_rects
+  → zathura_page_delete_annotation(page, rects)
+      → plugin: pdf_page_delete_annotation()
+      → iterate annotations, match geometry
+      → pdf_delete_annot(ctx, ppage, annot)
+  → zathura_document_save_as(document, path)
+  → Clear selection
+  → Notify user
 ```
 
 ## Key Technical Details
@@ -426,9 +430,19 @@ void pdf_delete_annot(fz_context *ctx, pdf_page *page, pdf_annot *annot);
 ```
 
 ### Geometry Matching
-Match by comparing PDF quad points with zathura rectangles:
-- Convert coordinates (PDF Y-up → zathura Y-down)
+Match by comparing PDF quad points with stored rectangles:
+- Direct coordinate comparison (no Y-flip needed - same coordinate space)
 - Use 1.0 pixel tolerance for floating point comparison
+
+### Embedded Selection Tracking
+```c
+// In ZathuraPagePrivate
+struct {
+  girara_list_t* list;                    // Database highlights
+  char* selected_id;                       // Selected database highlight ID
+  girara_list_t* embedded_selected_rects;  // Selected embedded annotation geometry
+} highlights;
+```
 
 ## Files Modified
 
@@ -438,8 +452,10 @@ Match by comparing PDF quad points with zathura rectangles:
 | `zathura/plugin-api.h` | Add `page_delete_annotation` typedef |
 | `zathura/page.h` | Declare `zathura_page_delete_annotation()` |
 | `zathura/page.c` | Implement dispatch wrapper |
-| `zathura/commands.c` | Add `cmd_highlights_delete_embedded()` |
-| `zathura/commands.h` | Declare function |
+| `zathura/page-widget.h` | Add `zathura_page_widget_get_embedded_selected_rects()` |
+| `zathura/page-widget.c` | Add embedded selection tracking, click detection, rendering |
+| `zathura/shortcuts.c` | Handle embedded deletion in `sc_delete_highlight()` |
+| `zathura/commands.c` | Add `cmd_highlights_delete_embedded()` (`:hldelete`) |
 | `zathura/config.c` | Register `:hldelete` command |
 
 ### MuPDF Plugin
@@ -451,19 +467,20 @@ Match by comparing PDF quad points with zathura rectangles:
 
 ## Acceptance Criteria
 
-- [x] `:hldelete` command exists
-- [x] Deletes selected embedded PDF annotation
-- [x] Saves document automatically
-- [x] Rejects database highlights with message
-- [x] Shows error if no highlight selected
+- [x] Click on embedded annotation shows red border selection
+- [x] 'x' key deletes selected embedded annotation
+- [x] Document saved automatically after deletion
+- [x] `:hldelete` command works as alternative
+- [x] Clicking elsewhere clears selection
+- [x] Only one selection at a time (database OR embedded)
 - [x] Deletion persists after close/reopen
 
 ## Test Plan
 
 1. Open PDF with embedded highlights
-2. Click on an embedded highlight to select it
-3. Run `:hldelete`
-4. Verify notification shows success
-5. Verify annotation removed from display
-6. Close and reopen - verify still gone
-7. Test with no selection - verify error message
+2. Click on an embedded highlight - verify red border appears
+3. Press 'x' - verify notification "Embedded annotation deleted from PDF."
+4. Verify annotation removed from display
+5. Close and reopen - verify still gone
+6. Click on database highlight, then embedded - verify selection switches
+7. Click elsewhere - verify selection clears
