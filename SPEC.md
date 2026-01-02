@@ -484,3 +484,112 @@ struct {
 5. Close and reopen - verify still gone
 6. Click on database highlight, then embedded - verify selection switches
 7. Click elsewhere - verify selection clears
+
+---
+
+# SPEC: Readwise Sync (Phase 4)
+
+**Status: COMPLETE** (2026-01-02)
+
+## Feature
+
+`:readwise_sync` command syncs highlights from current document to Readwise API.
+
+## User Flow
+
+```
+1. User sets READWISE_TOKEN environment variable (from readwise.io/access_token)
+2. User opens PDF with highlights
+3. User runs :readwise_sync
+4. Highlights are POSTed to Readwise API
+5. Notification: "Synced N highlights to Readwise."
+6. Highlights appear in Readwise dashboard
+```
+
+## Scope
+
+| Item | In Scope | Out of Scope |
+|------|----------|--------------|
+| `:readwise_sync` command | Yes | Auto-sync |
+| Current document only | Yes | All documents |
+| libcurl for HTTP | Yes | Async/background requests |
+| READWISE_TOKEN env var | Yes | Config file storage |
+| Error messages | Yes | Retry logic |
+| Deduplication | No (handled by Readwise) | - |
+
+## Architecture
+
+```
+:readwise_sync → zathura_db_load_highlights()
+              → extract title/author from document metadata
+              → build JSON payload
+              → POST to https://readwise.io/api/v2/highlights/
+              → report success/failure
+```
+
+## Files Modified
+
+### Zathura Core
+| File | Changes |
+|------|---------|
+| `meson.build` | Add `libcurl` dependency |
+| `zathura/readwise.h` | **New**: API declarations |
+| `zathura/readwise.c` | **New**: curl/JSON implementation |
+| `zathura/commands.c` | Add `cmd_readwise_sync()` |
+| `zathura/commands.h` | Declare `cmd_readwise_sync()` |
+| `zathura/config.c` | Register `:readwise_sync` command |
+| `.gitignore` | Add `.env` for token storage |
+
+## Key Technical Details
+
+### Readwise API
+
+```
+POST https://readwise.io/api/v2/highlights/
+Authorization: Token <READWISE_TOKEN>
+Content-Type: application/json
+
+{
+  "highlights": [{
+    "text": "highlighted text",
+    "title": "Document Title",
+    "author": "Author Name",
+    "source_type": "pdf",
+    "category": "books",
+    "location_type": "page",
+    "location": 5,
+    "highlighted_at": "2025-01-01T00:00:00Z"
+  }]
+}
+```
+
+### Error Handling
+
+| Condition | Message |
+|-----------|---------|
+| No document | "No document opened." |
+| No highlights | "No highlights to sync." |
+| Missing token | "READWISE_TOKEN not set. Get token from readwise.io/access_token" |
+| Invalid token | "Invalid token" |
+| Network error | "Network error" |
+| Success | "Synced N highlights to Readwise." |
+
+## Acceptance Criteria
+
+- [x] `:readwise_sync` command exists
+- [x] Reads highlights from database for current document
+- [x] Uses document title/author from PDF metadata
+- [x] Falls back to filename if no title
+- [x] Syncs to Readwise API via libcurl
+- [x] Shows error if READWISE_TOKEN not set
+- [x] Shows success count on completion
+- [x] Deduplication handled server-side by Readwise
+
+## Test Plan
+
+1. Test without READWISE_TOKEN - expect error message
+2. Test with invalid token - expect auth error
+3. Test with no highlights - expect "No highlights to sync."
+4. Test with valid token and highlights - expect success
+5. Verify highlights appear in Readwise dashboard
+6. Run twice - should succeed (server-side dedup)
