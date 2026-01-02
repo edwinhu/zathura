@@ -59,7 +59,7 @@ static char* build_json_payload(girara_list_t* highlights, const char* title, co
 
     // category (required)
     json_builder_set_member_name(builder, "category");
-    json_builder_add_string_value(builder, "books");
+    json_builder_add_string_value(builder, "articles");
 
     // location_type
     json_builder_set_member_name(builder, "location_type");
