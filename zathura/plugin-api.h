@@ -131,6 +131,12 @@ typedef girara_list_t* (*zathura_plugin_page_get_annotations_t)(zathura_page_t* 
 typedef zathura_error_t (*zathura_plugin_page_export_annotations_t)(
     zathura_page_t* page, void* data, girara_list_t* highlights);
 
+/**
+ * Delete an embedded annotation by geometry match
+ */
+typedef zathura_error_t (*zathura_plugin_page_delete_annotation_t)(
+    zathura_page_t* page, void* data, girara_list_t* rects);
+
 struct zathura_plugin_functions_s {
   /**
    * Opens a document
@@ -236,6 +242,11 @@ struct zathura_plugin_functions_s {
    * Export highlights to page as PDF annotations.
    */
   zathura_plugin_page_export_annotations_t page_export_annotations;
+
+  /**
+   * Delete an embedded annotation by geometry.
+   */
+  zathura_plugin_page_delete_annotation_t page_delete_annotation;
 };
 
 typedef struct zathura_plugin_version_s {

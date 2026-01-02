@@ -436,3 +436,18 @@ zathura_error_t zathura_page_export_annotations(zathura_page_t* page, girara_lis
 
   return functions->page_export_annotations(page, page->data, highlights);
 }
+
+zathura_error_t zathura_page_delete_annotation(zathura_page_t* page, girara_list_t* rects) {
+  if (page == NULL || page->document == NULL || rects == NULL) {
+    return ZATHURA_ERROR_INVALID_ARGUMENTS;
+  }
+
+  const zathura_plugin_t* plugin = zathura_document_get_plugin(page->document);
+  const zathura_plugin_functions_t* functions = zathura_plugin_get_functions(plugin);
+
+  if (functions->page_delete_annotation == NULL) {
+    return ZATHURA_ERROR_NOT_IMPLEMENTED;
+  }
+
+  return functions->page_delete_annotation(page, page->data, rects);
+}

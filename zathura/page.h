@@ -265,4 +265,13 @@ ZATHURA_PLUGIN_API girara_list_t* zathura_page_get_annotations(zathura_page_t* p
  */
 zathura_error_t zathura_page_export_annotations(zathura_page_t* page, girara_list_t* highlights);
 
+/**
+ * Delete an embedded annotation matching the given geometry
+ *
+ * @param page The page
+ * @param rects List of zathura_rectangle_t* defining the annotation geometry
+ * @return ZATHURA_ERROR_OK or error code
+ */
+zathura_error_t zathura_page_delete_annotation(zathura_page_t* page, girara_list_t* rects);
+
 #endif // PAGE_H
