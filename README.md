@@ -84,7 +84,6 @@ Select text and press:
 
 * `:hlimport` - Import embedded PDF annotations (from Preview, Acrobat, etc.)
 * `:hlexport [path]` - Export highlights as PDF annotations
-* `:hldelete` - Delete embedded PDF annotations
 
 ### Readwise Integration
 
