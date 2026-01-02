@@ -56,6 +56,16 @@ static bool remove_highlight(zathura_database_t* GIRARA_UNUSED(db), const char* 
   return true;
 }
 
+static bool add_note(zathura_database_t* GIRARA_UNUSED(db), const char* GIRARA_UNUSED(file),
+                     zathura_note_t* GIRARA_UNUSED(note)) {
+  return true;
+}
+
+static bool remove_note(zathura_database_t* GIRARA_UNUSED(db), const char* GIRARA_UNUSED(file),
+                        const char* GIRARA_UNUSED(id)) {
+  return true;
+}
+
 static void db_interface_init(ZathuraDatabaseInterface* iface) {
   /* initialize interface */
   iface->add_bookmark     = add_bookmark;
@@ -71,6 +81,9 @@ static void db_interface_init(ZathuraDatabaseInterface* iface) {
   iface->add_highlight    = add_highlight;
   iface->remove_highlight = remove_highlight;
   iface->load_highlights  = load_list;
+  iface->add_note         = add_note;
+  iface->remove_note      = remove_note;
+  iface->load_notes       = load_list;
 }
 
 static void io_interface_init(GiraraInputHistoryIOInterface* iface) {

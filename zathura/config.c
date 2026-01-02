@@ -417,6 +417,9 @@ static void add_default_shortcuts(girara_session_t* gsession, girara_mode_t mode
   girara_shortcut_add(gsession, GDK_CONTROL_MASK | GDK_SHIFT_MASK, GDK_KEY_h, NULL, sc_delete_highlight, mode, 0, NULL);
   girara_shortcut_add(gsession, 0, GDK_KEY_x, NULL, sc_delete_highlight, mode, 0, NULL);
   girara_shortcut_add(gsession, 0, GDK_KEY_c, NULL, sc_cycle_highlight_color, mode, 0, NULL);
+
+  /* Note shortcut: n to create note (click to place) */
+  girara_shortcut_add(gsession, 0, GDK_KEY_n, NULL, sc_note_create, mode, 0, NULL);
 }
 
 static void add_default_mouse_events(girara_session_t* gsession, girara_mode_t mode) {
@@ -788,6 +791,7 @@ void config_load_default(zathura_t* zathura) {
   girara_inputbar_command_add(gsession, "highlights", NULL,   cmd_highlights,      NULL,         _("List all highlights"));
   girara_inputbar_command_add(gsession, "hlimport", NULL, cmd_highlights_import, NULL, _("Import embedded PDF annotations as highlights"));
   girara_inputbar_command_add(gsession, "hlexport", NULL, cmd_highlights_export, NULL, _("Export highlights to PDF annotations"));
+  girara_inputbar_command_add(gsession, "notes",    NULL,   cmd_notes,           NULL,         _("List all notes"));
   girara_inputbar_command_add(gsession, "readwise_sync", NULL, cmd_readwise_sync, NULL, _("Sync highlights to Readwise"));
   girara_inputbar_command_add(gsession, "close",      NULL,   cmd_close,           NULL,         _("Close current file"));
   girara_inputbar_command_add(gsession, "info",       NULL,   cmd_info,            NULL,         _("Show file information"));

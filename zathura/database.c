@@ -85,3 +85,21 @@ girara_list_t* zathura_db_load_highlights(ZathuraDatabase* db, const char* file)
 
   return ZATHURA_DATABASE_GET_INTERFACE(db)->load_highlights(db, file);
 }
+
+bool zathura_db_add_note(ZathuraDatabase* db, const char* file, zathura_note_t* note) {
+  g_return_val_if_fail(ZATHURA_IS_DATABASE(db) && file && note, false);
+
+  return ZATHURA_DATABASE_GET_INTERFACE(db)->add_note(db, file, note);
+}
+
+bool zathura_db_remove_note(ZathuraDatabase* db, const char* file, const char* id) {
+  g_return_val_if_fail(ZATHURA_IS_DATABASE(db) && file && id, false);
+
+  return ZATHURA_DATABASE_GET_INTERFACE(db)->remove_note(db, file, id);
+}
+
+girara_list_t* zathura_db_load_notes(ZathuraDatabase* db, const char* file) {
+  g_return_val_if_fail(ZATHURA_IS_DATABASE(db) && file, NULL);
+
+  return ZATHURA_DATABASE_GET_INTERFACE(db)->load_notes(db, file);
+}

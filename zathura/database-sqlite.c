@@ -12,7 +12,7 @@
 #include "utils.h"
 
 /* version of the database layout */
-#define DATABASE_VERSION 5
+#define DATABASE_VERSION 6
 
 static char* sqlite3_column_text_dup(sqlite3_stmt* stmt, int col) {
   return g_strdup((const char*)sqlite3_column_text(stmt, col));
@@ -216,8 +216,19 @@ static void sqlite_db_check_layout(sqlite3* session, const int database_version,
                                             "created_at INTEGER,"
                                             "PRIMARY KEY(file, id));";
 
+  /* create notes table */
+  static const char SQL_NOTES_INIT[] = "CREATE TABLE IF NOT EXISTS notes ("
+                                       "file TEXT,"
+                                       "id TEXT,"
+                                       "page INTEGER,"
+                                       "x REAL,"
+                                       "y REAL,"
+                                       "content TEXT,"
+                                       "created_at INTEGER,"
+                                       "PRIMARY KEY(file, id));";
+
   static const char* ALL_INIT[] = {SQL_BOOKMARK_INIT, SQL_JUMPLIST_INIT, SQL_FILEINFO_INIT, SQL_HISTORY_INIT,
-                                   QUICKMARKS_INIT, SQL_HIGHLIGHTS_INIT};
+                                   QUICKMARKS_INIT, SQL_HIGHLIGHTS_INIT, SQL_NOTES_INIT};
 
   /* update fileinfo table (part 1) */
   static const char SQL_FILEINFO_ALTER[] = "ALTER TABLE fileinfo ADD COLUMN pages_per_row INTEGER;"
@@ -1149,6 +1160,117 @@ static girara_list_t* sqlite_load_highlights(zathura_database_t* db, const char*
   return result;
 }
 
+static bool sqlite_add_note(zathura_database_t* db, const char* file, zathura_note_t* note) {
+  g_return_val_if_fail(db != NULL && file != NULL && note != NULL, false);
+
+  static const char SQL_NOTE_ADD[] =
+      "REPLACE INTO notes (file, id, page, x, y, content, created_at) "
+      "VALUES (?, ?, ?, ?, ?, ?, ?);";
+
+  ZathuraSQLDatabase* sqldb       = ZATHURA_SQLDATABASE(db);
+  ZathuraSQLDatabasePrivate* priv = zathura_sqldatabase_get_instance_private(sqldb);
+
+  sqlite3_stmt* stmt = prepare_statement(priv->session, SQL_NOTE_ADD);
+  if (stmt == NULL) {
+    return false;
+  }
+
+  if (sqlite3_bind_text(stmt, 1, file, -1, NULL) != SQLITE_OK ||
+      sqlite3_bind_text(stmt, 2, note->id, -1, NULL) != SQLITE_OK ||
+      sqlite3_bind_int(stmt, 3, note->page) != SQLITE_OK ||
+      sqlite3_bind_double(stmt, 4, note->x) != SQLITE_OK ||
+      sqlite3_bind_double(stmt, 5, note->y) != SQLITE_OK ||
+      sqlite3_bind_text(stmt, 6, note->content, -1, NULL) != SQLITE_OK ||
+      sqlite3_bind_int64(stmt, 7, (sqlite3_int64)note->created_at) != SQLITE_OK) {
+    sqlite3_finalize(stmt);
+    girara_error("Failed to bind arguments.");
+    return false;
+  }
+
+  int res = sqlite3_step(stmt);
+  sqlite3_finalize(stmt);
+
+  return (res == SQLITE_DONE) ? true : false;
+}
+
+static bool sqlite_remove_note(zathura_database_t* db, const char* file, const char* id) {
+  g_return_val_if_fail(db != NULL && file != NULL && id != NULL, false);
+
+  static const char SQL_NOTE_REMOVE[] = "DELETE FROM notes WHERE file = ? AND id = ?;";
+
+  ZathuraSQLDatabase* sqldb       = ZATHURA_SQLDATABASE(db);
+  ZathuraSQLDatabasePrivate* priv = zathura_sqldatabase_get_instance_private(sqldb);
+
+  sqlite3_stmt* stmt = prepare_statement(priv->session, SQL_NOTE_REMOVE);
+  if (stmt == NULL) {
+    return false;
+  }
+
+  if (sqlite3_bind_text(stmt, 1, file, -1, NULL) != SQLITE_OK ||
+      sqlite3_bind_text(stmt, 2, id, -1, NULL) != SQLITE_OK) {
+    sqlite3_finalize(stmt);
+    girara_error("Failed to bind arguments.");
+    return false;
+  }
+
+  int res = sqlite3_step(stmt);
+  sqlite3_finalize(stmt);
+
+  return (res == SQLITE_DONE) ? true : false;
+}
+
+static void note_free(void* p) {
+  zathura_note_t* note = p;
+  zathura_note_free(note);
+}
+
+static girara_list_t* sqlite_load_notes(zathura_database_t* db, const char* file) {
+  g_return_val_if_fail(db != NULL && file != NULL, NULL);
+
+  static const char SQL_NOTE_SELECT[] =
+      "SELECT id, page, x, y, content, created_at FROM notes WHERE file = ? ORDER BY created_at ASC;";
+
+  ZathuraSQLDatabase* sqldb       = ZATHURA_SQLDATABASE(db);
+  ZathuraSQLDatabasePrivate* priv = zathura_sqldatabase_get_instance_private(sqldb);
+
+  sqlite3_stmt* stmt = prepare_statement(priv->session, SQL_NOTE_SELECT);
+  if (stmt == NULL) {
+    return NULL;
+  }
+
+  if (sqlite3_bind_text(stmt, 1, file, -1, NULL) != SQLITE_OK) {
+    sqlite3_finalize(stmt);
+    girara_error("Failed to bind arguments.");
+    return NULL;
+  }
+
+  girara_list_t* result = girara_list_new_with_free(note_free);
+  if (result == NULL) {
+    sqlite3_finalize(stmt);
+    return NULL;
+  }
+
+  while (sqlite3_step(stmt) == SQLITE_ROW) {
+    zathura_note_t* note = g_try_malloc0(sizeof(zathura_note_t));
+    if (note == NULL) {
+      continue;
+    }
+
+    note->id         = sqlite3_column_text_dup(stmt, 0);
+    note->page       = sqlite3_column_int(stmt, 1);
+    note->x          = sqlite3_column_double(stmt, 2);
+    note->y          = sqlite3_column_double(stmt, 3);
+    note->content    = sqlite3_column_text_dup(stmt, 4);
+    note->created_at = (time_t)sqlite3_column_int64(stmt, 5);
+
+    girara_list_append(result, note);
+  }
+
+  sqlite3_finalize(stmt);
+
+  return result;
+}
+
 static void zathura_database_interface_init(ZathuraDatabaseInterface* iface) {
   /* initialize interface */
   iface->add_bookmark     = sqlite_add_bookmark;
@@ -1164,6 +1286,9 @@ static void zathura_database_interface_init(ZathuraDatabaseInterface* iface) {
   iface->add_highlight    = sqlite_add_highlight;
   iface->remove_highlight = sqlite_remove_highlight;
   iface->load_highlights  = sqlite_load_highlights;
+  iface->add_note         = sqlite_add_note;
+  iface->remove_note      = sqlite_remove_note;
+  iface->load_notes       = sqlite_load_notes;
 }
 
 static void io_interface_init(GiraraInputHistoryIOInterface* iface) {
