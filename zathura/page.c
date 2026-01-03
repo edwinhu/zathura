@@ -451,3 +451,63 @@ zathura_error_t zathura_page_delete_annotation(zathura_page_t* page, girara_list
 
   return functions->page_delete_annotation(page, page->data, rects);
 }
+
+girara_list_t* zathura_page_get_notes(zathura_page_t* page, zathura_error_t* error) {
+  if (page == NULL || page->document == NULL) {
+    if (error) {
+      *error = ZATHURA_ERROR_INVALID_ARGUMENTS;
+    }
+    return NULL;
+  }
+
+  const zathura_plugin_t* plugin              = zathura_document_get_plugin(page->document);
+  const zathura_plugin_functions_t* functions = zathura_plugin_get_functions(plugin);
+  if (functions->page_get_notes == NULL) {
+    if (error) {
+      *error = ZATHURA_ERROR_NOT_IMPLEMENTED;
+    }
+    return NULL;
+  }
+
+  zathura_error_t e  = ZATHURA_ERROR_OK;
+  girara_list_t* ret = functions->page_get_notes(page, page->data, &e);
+  if (e != ZATHURA_ERROR_OK) {
+    if (error) {
+      *error = e;
+    }
+    girara_list_free(ret);
+    return NULL;
+  }
+
+  return ret;
+}
+
+zathura_error_t zathura_page_delete_note(zathura_page_t* page, double x, double y) {
+  if (page == NULL || page->document == NULL) {
+    return ZATHURA_ERROR_INVALID_ARGUMENTS;
+  }
+
+  const zathura_plugin_t* plugin = zathura_document_get_plugin(page->document);
+  const zathura_plugin_functions_t* functions = zathura_plugin_get_functions(plugin);
+
+  if (functions->page_delete_note == NULL) {
+    return ZATHURA_ERROR_NOT_IMPLEMENTED;
+  }
+
+  return functions->page_delete_note(page, page->data, x, y);
+}
+
+zathura_error_t zathura_page_update_note_content(zathura_page_t* page, double x, double y, const char* content) {
+  if (page == NULL || page->document == NULL) {
+    return ZATHURA_ERROR_INVALID_ARGUMENTS;
+  }
+
+  const zathura_plugin_t* plugin = zathura_document_get_plugin(page->document);
+  const zathura_plugin_functions_t* functions = zathura_plugin_get_functions(plugin);
+
+  if (functions->page_update_note_content == NULL) {
+    return ZATHURA_ERROR_NOT_IMPLEMENTED;
+  }
+
+  return functions->page_update_note_content(page, page->data, x, y, content);
+}

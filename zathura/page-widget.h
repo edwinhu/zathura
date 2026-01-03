@@ -210,4 +210,29 @@ bool zathura_page_widget_remove_note(ZathuraPage* widget, const char* note_id);
  */
 girara_list_t* zathura_page_widget_get_notes(ZathuraPage* widget);
 
+/**
+ * Get embedded note selection coordinates
+ *
+ * @param widget the widget
+ * @param x pointer to store x coordinate (can be NULL)
+ * @param y pointer to store y coordinate (can be NULL)
+ * @return TRUE if an embedded note is selected, FALSE otherwise
+ */
+gboolean zathura_page_widget_get_embedded_note_selection(ZathuraPage* widget, double* x, double* y);
+
+/**
+ * Clear embedded note selection
+ *
+ * @param widget the widget
+ */
+void zathura_page_widget_clear_embedded_note_selection(ZathuraPage* widget);
+
+/**
+ * Refresh cached embedded notes list from the PDF
+ * Call this after modifying embedded notes (e.g., deleting)
+ *
+ * @param widget the widget
+ */
+void zathura_page_widget_refresh_embedded_notes(ZathuraPage* widget);
+
 #endif

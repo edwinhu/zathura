@@ -532,6 +532,12 @@ void zathura_free(zathura_t* zathura) {
   g_clear_object(&zathura->print.settings);
   g_clear_object(&zathura->print.page_setup);
 
+  /* free note popup (we hold an extra reference via g_object_ref_sink) */
+  if (zathura->ui.note_popup != NULL) {
+    g_object_unref(zathura->ui.note_popup);
+    zathura->ui.note_popup = NULL;
+  }
+
   /* free registered plugins */
   zathura_plugin_manager_free(zathura->plugins.manager);
 
@@ -1525,6 +1531,32 @@ bool document_close(zathura_t* zathura, bool keep_monitor) {
   zathura->global.note_placement_mode = false;
   if (zathura->ui.note_popup != NULL) {
     zathura_note_popup_hide(zathura->ui.note_popup);
+  }
+
+  /* Clean up notes/highlights panels to avoid widget reparenting issues on reload */
+  if (zathura->ui.notes_paned != NULL || zathura->ui.highlights_paned != NULL) {
+    GtkWidget* paned = zathura->ui.notes_paned ? zathura->ui.notes_paned : zathura->ui.highlights_paned;
+
+    /* Hide panels */
+    if (zathura->ui.notes != NULL) {
+      gtk_widget_hide(zathura->ui.notes);
+    }
+    if (zathura->ui.highlights != NULL) {
+      gtk_widget_hide(zathura->ui.highlights);
+    }
+
+    /* Reparent view back to viewport */
+    GtkWidget* paned_parent = gtk_widget_get_parent(paned);
+    if (paned_parent != NULL && zathura->ui.view != NULL) {
+      g_object_ref(zathura->ui.view);
+      gtk_container_remove(GTK_CONTAINER(paned), zathura->ui.view);
+      gtk_container_remove(GTK_CONTAINER(paned_parent), paned);
+      gtk_container_add(GTK_CONTAINER(paned_parent), zathura->ui.view);
+      g_object_unref(zathura->ui.view);
+    }
+
+    zathura->ui.notes_paned = NULL;
+    zathura->ui.highlights_paned = NULL;
   }
 
   zathura_jumplist_clear(zathura);

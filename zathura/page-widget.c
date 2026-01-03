@@ -15,6 +15,7 @@
 #include "utils.h"
 #include "shortcuts.h"
 #include "zathura.h"
+#include "database.h"
 
 typedef struct zathura_page_widget_private_s {
   zathura_page_t* page;                 /**< Page object */
@@ -77,7 +78,21 @@ typedef struct zathura_page_widget_private_s {
   struct {
     girara_list_t* list;    /**< List of notes on this page */
     char* selected_id;      /**< ID of selected note (if any) */
+    zathura_note_t* pending_popup;  /**< Note pending popup on button release */
+    double pending_widget_x;        /**< Widget X for pending popup */
+    double pending_widget_y;        /**< Widget Y for pending popup */
   } notes;
+
+  struct {
+    girara_list_t* list;        /**< List of embedded PDF notes from plugin */
+    gboolean retrieved;         /**< True if we already tried to retrieve embedded notes */
+    double selected_x;          /**< X coordinate of selected embedded note */
+    double selected_y;          /**< Y coordinate of selected embedded note */
+    gboolean has_selection;     /**< True if an embedded note is selected */
+    zathura_note_t* pending_popup;  /**< Embedded note pending popup on button release */
+    double pending_widget_x;        /**< Widget X for pending popup */
+    double pending_widget_y;        /**< Widget Y for pending popup */
+  } embedded_notes;
 } ZathuraPagePrivate;
 
 G_DEFINE_TYPE_WITH_CODE(ZathuraPage, zathura_page_widget, GTK_TYPE_DRAWING_AREA, G_ADD_PRIVATE(ZathuraPage))
@@ -256,6 +271,12 @@ static void zathura_page_widget_init(ZathuraPage* widget) {
   priv->notes.list = NULL;
   priv->notes.selected_id = NULL;
 
+  priv->embedded_notes.list = NULL;
+  priv->embedded_notes.retrieved = FALSE;
+  priv->embedded_notes.has_selection = FALSE;
+  priv->embedded_notes.selected_x = 0.0;
+  priv->embedded_notes.selected_y = 0.0;
+
   const unsigned int event_mask =
       GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK | GDK_POINTER_MOTION_MASK | GDK_LEAVE_NOTIFY_MASK;
   gtk_widget_add_events(GTK_WIDGET(widget), event_mask);
@@ -326,6 +347,10 @@ static void zathura_page_widget_finalize(GObject* object) {
 
   if (priv->notes.selected_id != NULL) {
     g_free(priv->notes.selected_id);
+  }
+
+  if (priv->embedded_notes.list != NULL) {
+    girara_list_free(priv->embedded_notes.list);
   }
 
   G_OBJECT_CLASS(zathura_page_widget_parent_class)->finalize(object);
@@ -875,10 +900,68 @@ static gboolean zathura_page_widget_draw(GtkWidget* widget, cairo_t* cairo) {
         /* Draw red border if this note is selected */
         if (priv->notes.selected_id != NULL && note->id != NULL &&
             g_strcmp0(note->id, priv->notes.selected_id) == 0) {
-          cairo_set_source_rgba(cairo, 1.0, 0.0, 0.0, 0.9);  /* Red border */
+          /* Draw red border around selected note */
+          cairo_set_source_rgba(cairo, 1.0, 0.0, 0.0, 0.9);
           cairo_set_line_width(cairo, 2.0);
           cairo_rectangle(cairo, icon_x - 1, icon_y - 1, NOTE_ICON_SIZE + 2, NOTE_ICON_SIZE + 2);
           cairo_stroke(cairo);
+          /* Note: delete button removed - deletion now via popup */
+        }
+      }
+    }
+
+    /* Fetch embedded PDF notes (only once per page) */
+    if (priv->embedded_notes.retrieved == FALSE) {
+      priv->embedded_notes.retrieved = TRUE;
+      priv->embedded_notes.list = zathura_page_get_notes(priv->page, NULL);
+      girara_debug("Fetched %zu embedded notes from PDF",
+                   priv->embedded_notes.list ? girara_list_size(priv->embedded_notes.list) : 0);
+    }
+
+    /* Draw embedded PDF note icons (blue color) - drawn AFTER database notes so they appear on top */
+    if (priv->embedded_notes.list != NULL) {
+      for (size_t idx = 0; idx != girara_list_size(priv->embedded_notes.list); ++idx) {
+        zathura_note_t* note = girara_list_nth(priv->embedded_notes.list, idx);
+        if (note == NULL) {
+          continue;
+        }
+
+        /* Transform note position using recalc_rectangle */
+        zathura_rectangle_t note_rect = {
+          .x1 = note->x,
+          .y1 = note->y,
+          .x2 = note->x + 1,
+          .y2 = note->y + 1
+        };
+        zathura_rectangle_t transformed = recalc_rectangle(priv->page, note_rect);
+
+        /* Draw note icon (small post-it style - BLUE for embedded) */
+        double icon_x = transformed.x1;
+        double icon_y = transformed.y1;
+
+        /* Light blue fill for embedded notes */
+        cairo_set_source_rgba(cairo, 0.6, 0.8, 1.0, 0.9);
+        cairo_rectangle(cairo, icon_x, icon_y, NOTE_ICON_SIZE, NOTE_ICON_SIZE);
+        cairo_fill(cairo);
+
+        /* Dark blue border */
+        cairo_set_source_rgba(cairo, 0.2, 0.4, 0.8, 0.9);
+        cairo_set_line_width(cairo, 1.0);
+        cairo_rectangle(cairo, icon_x, icon_y, NOTE_ICON_SIZE, NOTE_ICON_SIZE);
+        cairo_stroke(cairo);
+
+        /* Draw red border if this embedded note is selected */
+        if (priv->embedded_notes.has_selection) {
+          const double eps = 1.0;
+          if (fabs(note->x - priv->embedded_notes.selected_x) < eps &&
+              fabs(note->y - priv->embedded_notes.selected_y) < eps) {
+            /* Draw red border around selected note */
+            cairo_set_source_rgba(cairo, 1.0, 0.0, 0.0, 0.9);
+            cairo_set_line_width(cairo, 2.0);
+            cairo_rectangle(cairo, icon_x - 1, icon_y - 1, NOTE_ICON_SIZE + 2, NOTE_ICON_SIZE + 2);
+            cairo_stroke(cairo);
+            /* Note: delete button removed - deletion now via popup */
+          }
         }
       }
     }
@@ -1238,15 +1321,73 @@ static gboolean cb_zathura_page_widget_button_press_event(GtkWidget* widget, Gdk
         /* Check if click is within NOTE_ICON_SIZE of the note position */
         double icon_x = transformed.x1;
         double icon_y = transformed.y1;
+
+        /* Note: delete button removed - deletion now via popup */
         if (button->x >= icon_x && button->x <= icon_x + NOTE_ICON_SIZE &&
             button->y >= icon_y && button->y <= icon_y + NOTE_ICON_SIZE) {
-          /* Hit! Select this note and open popup for editing */
+          /* Hit! Select this note and mark for popup on button release */
           g_free(priv->notes.selected_id);
           priv->notes.selected_id = g_strdup(note->id);
           zathura_page_widget_redraw_canvas(page);
 
-          /* Open popup for editing (pass widget coords for popup positioning) */
-          sc_note_handle_edit_click(priv->zathura, widget, button->x, button->y, note);
+          /* Store pending popup - will open on button RELEASE to avoid GTK modal close */
+          priv->notes.pending_popup = note;
+          priv->notes.pending_widget_x = button->x;
+          priv->notes.pending_widget_y = button->y;
+          g_message("NOTE: pending popup set for native note at (%.1f, %.1f)", note->x, note->y);
+
+          return TRUE;  /* Event handled */
+        }
+      }
+    }
+
+    /* Check if click is on an embedded PDF note icon */
+    if (priv->embedded_notes.list != NULL) {
+      for (size_t idx = 0; idx != girara_list_size(priv->embedded_notes.list); ++idx) {
+        zathura_note_t* note = girara_list_nth(priv->embedded_notes.list, idx);
+        if (note == NULL) {
+          continue;
+        }
+
+        /* Transform note position to widget coordinates (same as draw code) */
+        zathura_rectangle_t note_rect = {
+          .x1 = note->x,
+          .y1 = note->y,
+          .x2 = note->x + 1,
+          .y2 = note->y + 1
+        };
+        zathura_rectangle_t transformed = recalc_rectangle(priv->page, note_rect);
+
+        /* Check if click is within NOTE_ICON_SIZE of the note position */
+        double icon_x = transformed.x1;
+        double icon_y = transformed.y1;
+
+        /* Note: delete button removed - deletion now via popup */
+        /* Check if click is on the note icon itself */
+        g_message("EMBEDDED_NOTE: icon click check - click (%.1f,%.1f) vs icon (%.1f-%.1f, %.1f-%.1f)",
+                  button->x, button->y, icon_x, icon_x+NOTE_ICON_SIZE, icon_y, icon_y+NOTE_ICON_SIZE);
+        if (button->x >= icon_x && button->x <= icon_x + NOTE_ICON_SIZE &&
+            button->y >= icon_y && button->y <= icon_y + NOTE_ICON_SIZE) {
+          /* Hit! Mark for popup on button release */
+          g_message("EMBEDDED_NOTE: ICON HIT! Marking pending popup for (%.1f, %.1f)", note->x, note->y);
+
+          /* Clear database note selection */
+          if (priv->notes.selected_id != NULL) {
+            g_free(priv->notes.selected_id);
+            priv->notes.selected_id = NULL;
+          }
+          priv->notes.pending_popup = NULL;  /* Clear any native note pending */
+
+          /* Select this embedded note */
+          priv->embedded_notes.has_selection = TRUE;
+          priv->embedded_notes.selected_x = note->x;
+          priv->embedded_notes.selected_y = note->y;
+          zathura_page_widget_redraw_canvas(page);
+
+          /* Store pending popup - will open on button RELEASE to avoid GTK modal close */
+          priv->embedded_notes.pending_popup = note;
+          priv->embedded_notes.pending_widget_x = button->x;
+          priv->embedded_notes.pending_widget_y = button->y;
 
           return TRUE;  /* Event handled */
         }
@@ -1422,6 +1563,25 @@ static gboolean cb_zathura_page_widget_button_release_event(GtkWidget* widget, G
 
   if (button->button != GDK_BUTTON_PRIMARY) {
     return false;
+  }
+
+  /* Check for pending note popups - open on RELEASE to avoid GTK modal auto-close */
+  if (priv->notes.pending_popup != NULL) {
+    zathura_note_t* note = priv->notes.pending_popup;
+    priv->notes.pending_popup = NULL;  /* Clear pending */
+    g_message("NOTE: opening popup on button release for native note at (%.1f, %.1f)", note->x, note->y);
+    sc_note_handle_edit_click(priv->zathura, widget, priv->notes.pending_widget_x,
+                              priv->notes.pending_widget_y, note);
+    return TRUE;
+  }
+
+  if (priv->embedded_notes.pending_popup != NULL) {
+    zathura_note_t* note = priv->embedded_notes.pending_popup;
+    priv->embedded_notes.pending_popup = NULL;  /* Clear pending */
+    g_message("EMBEDDED_NOTE: opening popup on button release for (%.1f, %.1f)", note->x, note->y);
+    sc_note_handle_embedded_edit_click(priv->zathura, widget, priv->embedded_notes.pending_widget_x,
+                                       priv->embedded_notes.pending_widget_y, note);
+    return TRUE;
   }
 
   if (priv->mouse.selection.x2 == -1 && priv->mouse.selection.y2 == -1) {
@@ -1890,4 +2050,54 @@ girara_list_t* zathura_page_widget_get_notes(ZathuraPage* widget) {
   g_return_val_if_fail(ZATHURA_IS_PAGE(widget), NULL);
   ZathuraPagePrivate* priv = zathura_page_widget_get_instance_private(widget);
   return priv->notes.list;
+}
+
+gboolean zathura_page_widget_get_embedded_note_selection(ZathuraPage* widget, double* x, double* y) {
+  g_return_val_if_fail(ZATHURA_IS_PAGE(widget), FALSE);
+  ZathuraPagePrivate* priv = zathura_page_widget_get_instance_private(widget);
+
+  if (!priv->embedded_notes.has_selection) {
+    return FALSE;
+  }
+
+  if (x != NULL) {
+    *x = priv->embedded_notes.selected_x;
+  }
+  if (y != NULL) {
+    *y = priv->embedded_notes.selected_y;
+  }
+  return TRUE;
+}
+
+void zathura_page_widget_clear_embedded_note_selection(ZathuraPage* widget) {
+  g_return_if_fail(ZATHURA_IS_PAGE(widget));
+  ZathuraPagePrivate* priv = zathura_page_widget_get_instance_private(widget);
+
+  if (priv->embedded_notes.has_selection) {
+    priv->embedded_notes.has_selection = FALSE;
+    zathura_page_widget_redraw_canvas(widget);
+  }
+}
+
+void zathura_page_widget_refresh_embedded_notes(ZathuraPage* widget) {
+  g_return_if_fail(ZATHURA_IS_PAGE(widget));
+  ZathuraPagePrivate* priv = zathura_page_widget_get_instance_private(widget);
+
+  /* Clear pending popup pointer before freeing list (avoid dangling pointer) */
+  priv->embedded_notes.pending_popup = NULL;
+
+  if (priv->embedded_notes.list != NULL) {
+    girara_list_free(priv->embedded_notes.list);
+    priv->embedded_notes.list = NULL;
+  }
+
+  /* Immediately re-fetch notes from PDF (don't wait for next draw cycle) */
+  priv->embedded_notes.list = zathura_page_get_notes(priv->page, NULL);
+  priv->embedded_notes.retrieved = TRUE;
+  priv->embedded_notes.has_selection = FALSE;
+
+  g_message("NOTE_POPUP: refreshed embedded notes cache (immediate re-fetch)");
+
+  /* Trigger redraw to show updated notes */
+  zathura_page_widget_redraw_canvas(widget);
 }

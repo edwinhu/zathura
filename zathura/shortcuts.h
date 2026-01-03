@@ -467,6 +467,19 @@ void sc_note_handle_edit_click(zathura_t* zathura, GtkWidget* page_widget,
                                zathura_note_t* note);
 
 /**
+ * Handler for clicking on an embedded PDF note to open edit popup
+ *
+ * @param zathura The zathura session
+ * @param page_widget The page widget containing the note
+ * @param widget_x X coordinate in widget space (for popup positioning)
+ * @param widget_y Y coordinate in widget space (for popup positioning)
+ * @param note The embedded note that was clicked (not owned by callee)
+ */
+void sc_note_handle_embedded_edit_click(zathura_t* zathura, GtkWidget* page_widget,
+                                        double widget_x, double widget_y,
+                                        zathura_note_t* note);
+
+/**
  * Toggle notes panel
  *
  * @param session The used girara session

@@ -547,15 +547,36 @@ gboolean cb_notes_key_press(GtkWidget* widget, GdkEventKey* event, void* data) {
 
   switch (event->keyval) {
     case GDK_KEY_x: {
-      // Delete note
+      // Delete note - save coordinates before any operations
       char* id_copy = g_strdup(note->id);
+      unsigned int note_page = note->page;
+      double note_x = note->x;
+      double note_y = note->y;
+
       if (zathura_db_remove_note(zathura->database, file_path, id_copy)) {
         // Remove from page widget
-        zathura_page_t* page = zathura_document_get_page(zathura->document, note->page);
+        zathura_page_t* page = zathura_document_get_page(zathura->document, note_page);
         if (page != NULL) {
           GtkWidget* page_widget = zathura_page_get_widget(zathura, page);
           if (page_widget != NULL) {
             zathura_page_widget_remove_note(ZATHURA_PAGE(page_widget), id_copy);
+            gtk_widget_queue_draw(page_widget);
+          }
+
+          // Also delete from embedded PDF (blue annotation)
+          // Create a small rectangle around the note position for deletion
+          girara_list_t* rects = girara_list_new2(g_free);
+          zathura_rectangle_t* rect = g_malloc(sizeof(zathura_rectangle_t));
+          // Note icons are typically small - use a 1x1 point around the position
+          rect->x1 = note_x;
+          rect->y1 = note_y;
+          rect->x2 = note_x + 1.0;
+          rect->y2 = note_y + 1.0;
+          girara_list_append(rects, rect);
+          zathura_error_t err = zathura_page_delete_annotation(page, rects);
+          girara_list_free(rects);
+          if (err == ZATHURA_ERROR_OK) {
+            zathura_document_save_as(zathura->document, file_path);
           }
         }
         // Refresh panel by hiding and showing

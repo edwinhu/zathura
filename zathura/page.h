@@ -274,4 +274,35 @@ zathura_error_t zathura_page_export_annotations(zathura_page_t* page, girara_lis
  */
 zathura_error_t zathura_page_delete_annotation(zathura_page_t* page, girara_list_t* rects);
 
+/**
+ * Get embedded sticky note annotations from a page
+ *
+ * @param page Page
+ * @param error Set to an error value (see \ref zathura_error_t) if an error
+ *    occurred.
+ * @return List of zathura_note_t* or NULL if none
+ */
+ZATHURA_PLUGIN_API girara_list_t* zathura_page_get_notes(zathura_page_t* page, zathura_error_t* error);
+
+/**
+ * Delete an embedded note annotation by position
+ *
+ * @param page The page
+ * @param x X coordinate of the note
+ * @param y Y coordinate of the note
+ * @return ZATHURA_ERROR_OK or error code
+ */
+zathura_error_t zathura_page_delete_note(zathura_page_t* page, double x, double y);
+
+/**
+ * Update the content of an embedded note annotation by position
+ *
+ * @param page The page
+ * @param x X coordinate of the note
+ * @param y Y coordinate of the note
+ * @param content The new content for the note
+ * @return ZATHURA_ERROR_OK or error code
+ */
+zathura_error_t zathura_page_update_note_content(zathura_page_t* page, double x, double y, const char* content);
+
 #endif // PAGE_H

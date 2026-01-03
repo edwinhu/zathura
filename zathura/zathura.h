@@ -158,6 +158,10 @@ struct zathura_s {
     bool embedded_delete_pending;         /**< Waiting for confirmation to delete embedded annotation */
     unsigned int embedded_delete_page;    /**< Page number for pending delete */
     girara_list_t* embedded_delete_rects; /**< Rectangles for pending delete */
+    bool embedded_note_delete_pending;    /**< Waiting for confirmation to delete embedded note */
+    unsigned int embedded_note_delete_page; /**< Page number for pending note delete */
+    double embedded_note_delete_x;        /**< X coordinate of note to delete */
+    double embedded_note_delete_y;        /**< Y coordinate of note to delete */
     bool note_placement_mode;             /**< True when waiting for click to place note */
   } global;
 

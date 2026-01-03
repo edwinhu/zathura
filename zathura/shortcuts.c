@@ -2050,10 +2050,25 @@ bool sc_delete_highlight(girara_session_t* session, girara_argument_t* UNUSED(ar
           _("Delete embedded annotation from PDF? Press 'y' to confirm, Escape to cancel."));
       return true;
     }
+
+    /* Also check for embedded PDF note selection */
+    double note_x, note_y;
+    if (zathura_page_widget_get_embedded_note_selection(ZATHURA_PAGE(page_widget), &note_x, &note_y)) {
+      /* Store pending delete state for confirmation */
+      zathura->global.embedded_note_delete_pending = true;
+      zathura->global.embedded_note_delete_page = page_id;
+      zathura->global.embedded_note_delete_x = note_x;
+      zathura->global.embedded_note_delete_y = note_y;
+
+      girara_debug("Preparing to delete embedded note at (%.1f, %.1f)", note_x, note_y);
+      girara_notify(session, GIRARA_WARNING,
+          _("Delete embedded note from PDF? Press 'y' to confirm, Escape to cancel."));
+      return true;
+    }
   }
 
-  /* No highlight selected */
-  girara_notify(session, GIRARA_WARNING, _("Click on a highlight first, then press x."));
+  /* No highlight or note selected */
+  girara_notify(session, GIRARA_WARNING, _("Click on a highlight or note first, then press x."));
   return false;
 }
 
@@ -2086,6 +2101,44 @@ bool sc_confirm_embedded_delete(girara_session_t* session, girara_argument_t* UN
   g_return_val_if_fail(session != NULL, false);
   g_return_val_if_fail(session->global.data != NULL, false);
   zathura_t* zathura = session->global.data;
+
+  /* Check for embedded note deletion first */
+  if (zathura->global.embedded_note_delete_pending) {
+    unsigned int page_id = zathura->global.embedded_note_delete_page;
+    double note_x = zathura->global.embedded_note_delete_x;
+    double note_y = zathura->global.embedded_note_delete_y;
+
+    zathura_page_t* page = zathura_document_get_page(zathura->document, page_id);
+    if (page == NULL) {
+      zathura->global.embedded_note_delete_pending = false;
+      girara_notify(session, GIRARA_ERROR, _("Invalid page."));
+      return true;
+    }
+
+    /* Delete embedded note */
+    girara_debug("Deleting embedded note at (%.1f, %.1f)", note_x, note_y);
+    zathura_error_t error = zathura_page_delete_note(page, note_x, note_y);
+    if (error == ZATHURA_ERROR_OK) {
+      /* Save document */
+      const char* path = zathura_document_get_path(zathura->document);
+      if (zathura_document_save_as(zathura->document, path) != ZATHURA_ERROR_OK) {
+        girara_notify(session, GIRARA_WARNING, _("Note deleted but failed to save."));
+      } else {
+        girara_notify(session, GIRARA_INFO, _("Embedded note deleted from PDF."));
+      }
+    } else {
+      girara_notify(session, GIRARA_ERROR, _("Failed to delete embedded note."));
+    }
+
+    /* Clear selection and pending state */
+    GtkWidget* page_widget = zathura_page_get_widget(zathura, page);
+    if (page_widget != NULL) {
+      zathura_page_widget_clear_embedded_note_selection(ZATHURA_PAGE(page_widget));
+    }
+
+    zathura->global.embedded_note_delete_pending = false;
+    return true;
+  }
 
   if (!zathura->global.embedded_delete_pending) {
     return false;  /* No pending delete, let normal 'y' handling occur */
@@ -2159,6 +2212,12 @@ bool sc_cancel_embedded_delete(girara_session_t* session, girara_argument_t* UNU
   g_return_val_if_fail(session != NULL, false);
   g_return_val_if_fail(session->global.data != NULL, false);
   zathura_t* zathura = session->global.data;
+
+  if (zathura->global.embedded_note_delete_pending) {
+    zathura->global.embedded_note_delete_pending = false;
+    girara_notify(session, GIRARA_INFO, _("Note delete cancelled."));
+    return true;
+  }
 
   if (zathura->global.embedded_delete_pending) {
     if (zathura->global.embedded_delete_rects != NULL) {
@@ -2304,7 +2363,10 @@ error:
  */
 static void note_save_callback(zathura_t* zathura, unsigned int page,
                                double x, double y, const char* content,
-                               const char* note_id, void* UNUSED(data)) {
+                               const char* note_id, bool is_embedded, void* UNUSED(data)) {
+  g_message("NOTE_POPUP: save callback - type=%s content='%.30s...'",
+            is_embedded ? "embedded" : "native", content ? content : "(null)");
+
   /* If content is empty or whitespace only, don't save */
   if (content == NULL || content[0] == '\0') {
     return;
@@ -2320,6 +2382,50 @@ static void note_save_callback(zathura_t* zathura, unsigned int page,
   }
   if (*p == '\0') {
     return;  /* Only whitespace */
+  }
+
+  /* For embedded notes, update the PDF annotation content */
+  if (is_embedded) {
+    zathura_page_t* zpage = zathura_document_get_page(zathura->document, page);
+    if (zpage == NULL) {
+      girara_notify(zathura->ui.session, GIRARA_ERROR, _("Failed to update embedded note."));
+      return;
+    }
+
+    g_message("NOTE_POPUP: updating embedded note at (%.1f, %.1f) with content='%.30s...'", x, y, content);
+
+    zathura_error_t err = zathura_page_update_note_content(zpage, x, y, content);
+    if (err == ZATHURA_ERROR_OK) {
+      /* Suppress file monitor during internal save to prevent reload race condition */
+      if (zathura->file_monitor.monitor != NULL) {
+        zathura_filemonitor_stop(zathura->file_monitor.monitor);
+      }
+
+      /* Save the PDF document */
+      const char* file_path = zathura_document_get_path(zathura->document);
+      if (zathura_document_save_as(zathura->document, file_path) == ZATHURA_ERROR_OK) {
+        girara_notify(zathura->ui.session, GIRARA_INFO, _("Embedded note updated."));
+      } else {
+        girara_notify(zathura->ui.session, GIRARA_WARNING, _("Note updated but failed to save PDF."));
+      }
+
+      /* Restart file monitor after save completes */
+      if (zathura->file_monitor.monitor != NULL) {
+        zathura_filemonitor_start(zathura->file_monitor.monitor);
+      }
+
+      /* Refresh embedded notes list to show updated content */
+      GtkWidget* page_widget = zathura_page_get_widget(zathura, zpage);
+      if (page_widget != NULL) {
+        zathura_page_widget_refresh_embedded_notes(ZATHURA_PAGE(page_widget));
+        gtk_widget_queue_draw(page_widget);
+      }
+    } else if (err == ZATHURA_ERROR_NOT_IMPLEMENTED) {
+      girara_notify(zathura->ui.session, GIRARA_INFO, _("Embedded PDF notes are read-only (plugin does not support editing)."));
+    } else {
+      girara_notify(zathura->ui.session, GIRARA_ERROR, _("Failed to update embedded note."));
+    }
+    return;
   }
 
   /* Create note */
@@ -2369,6 +2475,55 @@ static void note_save_callback(zathura_t* zathura, unsigned int page,
   }
 }
 
+/**
+ * Callback function for note popup delete
+ */
+static void note_delete_callback(zathura_t* zathura, unsigned int page,
+                                 double x, double y, const char* note_id,
+                                 bool is_embedded, void* UNUSED(data)) {
+  g_message("NOTE_POPUP: delete callback - type=%s page=%u (%.1f, %.1f) id=%s",
+            is_embedded ? "embedded" : "native", page, x, y, note_id ? note_id : "(null)");
+
+  zathura_page_t* zpage = zathura_document_get_page(zathura->document, page);
+  if (zpage == NULL) {
+    girara_notify(zathura->ui.session, GIRARA_ERROR, _("Failed to delete note."));
+    return;
+  }
+
+  GtkWidget* page_widget = zathura_page_get_widget(zathura, zpage);
+
+  if (is_embedded) {
+    /* Delete embedded PDF note */
+    zathura_error_t err = zathura_page_delete_note(zpage, x, y);
+    if (err == ZATHURA_ERROR_OK) {
+      /* Save the PDF document */
+      zathura_document_save_as(zathura->document, zathura_document_get_path(zathura->document));
+      girara_notify(zathura->ui.session, GIRARA_INFO, _("Embedded note deleted."));
+
+      /* Refresh embedded notes list */
+      if (page_widget != NULL) {
+        zathura_page_widget_refresh_embedded_notes(ZATHURA_PAGE(page_widget));
+        gtk_widget_queue_draw(page_widget);
+      }
+    } else {
+      girara_notify(zathura->ui.session, GIRARA_ERROR, _("Failed to delete embedded note."));
+    }
+  } else {
+    /* Delete database note */
+    if (note_id != NULL) {
+      const char* file_path = zathura_document_get_path(zathura->document);
+      if (zathura_db_remove_note(zathura->database, file_path, note_id)) {
+        if (page_widget != NULL) {
+          zathura_page_widget_remove_note(ZATHURA_PAGE(page_widget), note_id);
+        }
+        girara_notify(zathura->ui.session, GIRARA_INFO, _("Note deleted."));
+      } else {
+        girara_notify(zathura->ui.session, GIRARA_ERROR, _("Failed to delete note."));
+      }
+    }
+  }
+}
+
 bool sc_note_create(girara_session_t* session, girara_argument_t* UNUSED(argument),
                     girara_event_t* UNUSED(event), unsigned int UNUSED(t)) {
   g_return_val_if_fail(session != NULL, false);
@@ -2396,11 +2551,11 @@ void sc_note_handle_placement_click(zathura_t* zathura, GtkWidget* page_widget,
   /* Reset placement mode */
   zathura->global.note_placement_mode = false;
 
-  /* Show popup for note entry */
+  /* Show popup for new note entry (not embedded, no delete callback for new notes) */
   if (zathura->ui.note_popup != NULL) {
     zathura_note_popup_show(zathura->ui.note_popup, page_widget,
                             widget_x, widget_y, page, x, y,
-                            NULL, note_save_callback, NULL);
+                            NULL, false, note_save_callback, NULL, NULL);
   }
 }
 
@@ -2411,11 +2566,30 @@ void sc_note_handle_edit_click(zathura_t* zathura, GtkWidget* page_widget,
   g_return_if_fail(page_widget != NULL);
   g_return_if_fail(note != NULL);
 
-  /* Show popup for editing existing note */
+  /* Show popup for editing existing database note */
   if (zathura->ui.note_popup != NULL) {
     zathura_note_popup_show(zathura->ui.note_popup, page_widget,
                             widget_x, widget_y, note->page,
-                            note->x, note->y, note, note_save_callback, NULL);
+                            note->x, note->y, note, false,
+                            note_save_callback, note_delete_callback, NULL);
+  }
+}
+
+void sc_note_handle_embedded_edit_click(zathura_t* zathura, GtkWidget* page_widget,
+                                        double widget_x, double widget_y,
+                                        zathura_note_t* note) {
+  g_return_if_fail(zathura != NULL);
+  g_return_if_fail(page_widget != NULL);
+  g_return_if_fail(note != NULL);
+
+  g_message("NOTE_POPUP: opening popup for embedded note at (%.1f, %.1f)", note->x, note->y);
+
+  /* Show popup for viewing/deleting embedded note */
+  if (zathura->ui.note_popup != NULL) {
+    zathura_note_popup_show(zathura->ui.note_popup, page_widget,
+                            widget_x, widget_y, note->page,
+                            note->x, note->y, note, true,
+                            note_save_callback, note_delete_callback, NULL);
   }
 }
 
