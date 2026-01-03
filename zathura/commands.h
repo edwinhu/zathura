@@ -88,6 +88,24 @@ bool cmd_highlights_import(girara_session_t* session, girara_list_t* argument_li
 bool cmd_highlights_export(girara_session_t* session, girara_list_t* argument_list);
 
 /**
+ * Import all PDF annotations (highlights and notes) to database
+ *
+ * @param session The used girara session
+ * @param argument_list List of passed arguments
+ * @return true if no error occurred
+ */
+bool cmd_annot_import(girara_session_t* session, girara_list_t* argument_list);
+
+/**
+ * Export all annotations (highlights and notes) to PDF
+ *
+ * @param session The used girara session
+ * @param argument_list List of passed arguments
+ * @return true if no error occurred
+ */
+bool cmd_annot_export(girara_session_t* session, girara_list_t* argument_list);
+
+/**
  * Sync highlights to Readwise API
  *
  * @param session The used girara session

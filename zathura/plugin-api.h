@@ -126,6 +126,25 @@ typedef girara_list_t* (*zathura_plugin_page_get_annotations_t)(zathura_page_t* 
                                                                   zathura_error_t* error);
 
 /**
+ * Get embedded sticky note annotations from a page
+ * Returns list of zathura_note_t*
+ */
+typedef girara_list_t* (*zathura_plugin_page_get_notes_t)(zathura_page_t* page, void* data,
+                                                            zathura_error_t* error);
+
+/**
+ * Delete an embedded note annotation by position
+ */
+typedef zathura_error_t (*zathura_plugin_page_delete_note_t)(
+    zathura_page_t* page, void* data, double x, double y);
+
+/**
+ * Update the content of an embedded note annotation by position
+ */
+typedef zathura_error_t (*zathura_plugin_page_update_note_content_t)(
+    zathura_page_t* page, void* data, double x, double y, const char* content);
+
+/**
  * Export highlights to page as PDF annotations
  */
 typedef zathura_error_t (*zathura_plugin_page_export_annotations_t)(
@@ -239,6 +258,11 @@ struct zathura_plugin_functions_s {
   zathura_plugin_page_get_annotations_t page_get_annotations;
 
   /**
+   * Get embedded sticky note annotations.
+   */
+  zathura_plugin_page_get_notes_t page_get_notes;
+
+  /**
    * Export highlights to page as PDF annotations.
    */
   zathura_plugin_page_export_annotations_t page_export_annotations;
@@ -247,6 +271,16 @@ struct zathura_plugin_functions_s {
    * Delete an embedded annotation by geometry.
    */
   zathura_plugin_page_delete_annotation_t page_delete_annotation;
+
+  /**
+   * Delete an embedded note annotation by position.
+   */
+  zathura_plugin_page_delete_note_t page_delete_note;
+
+  /**
+   * Update the content of an embedded note annotation by position.
+   */
+  zathura_plugin_page_update_note_content_t page_update_note_content;
 };
 
 typedef struct zathura_plugin_version_s {
