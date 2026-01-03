@@ -511,3 +511,18 @@ zathura_error_t zathura_page_update_note_content(zathura_page_t* page, double x,
 
   return functions->page_update_note_content(page, page->data, x, y, content);
 }
+
+zathura_error_t zathura_page_export_notes(zathura_page_t* page, girara_list_t* notes) {
+  if (page == NULL || page->document == NULL) {
+    return ZATHURA_ERROR_INVALID_ARGUMENTS;
+  }
+
+  const zathura_plugin_t* plugin = zathura_document_get_plugin(page->document);
+  const zathura_plugin_functions_t* functions = zathura_plugin_get_functions(plugin);
+
+  if (functions->page_export_notes == NULL) {
+    return ZATHURA_ERROR_NOT_IMPLEMENTED;
+  }
+
+  return functions->page_export_notes(page, page->data, notes);
+}

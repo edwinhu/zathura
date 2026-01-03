@@ -156,6 +156,12 @@ typedef zathura_error_t (*zathura_plugin_page_export_annotations_t)(
 typedef zathura_error_t (*zathura_plugin_page_delete_annotation_t)(
     zathura_page_t* page, void* data, girara_list_t* rects);
 
+/**
+ * Export notes to page as PDF text annotations
+ */
+typedef zathura_error_t (*zathura_plugin_page_export_notes_t)(
+    zathura_page_t* page, void* data, girara_list_t* notes);
+
 struct zathura_plugin_functions_s {
   /**
    * Opens a document
@@ -281,6 +287,11 @@ struct zathura_plugin_functions_s {
    * Update the content of an embedded note annotation by position.
    */
   zathura_plugin_page_update_note_content_t page_update_note_content;
+
+  /**
+   * Export notes to page as PDF text annotations.
+   */
+  zathura_plugin_page_export_notes_t page_export_notes;
 };
 
 typedef struct zathura_plugin_version_s {

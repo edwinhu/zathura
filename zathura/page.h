@@ -305,4 +305,13 @@ zathura_error_t zathura_page_delete_note(zathura_page_t* page, double x, double 
  */
 zathura_error_t zathura_page_update_note_content(zathura_page_t* page, double x, double y, const char* content);
 
+/**
+ * Export notes to page as PDF text annotations
+ *
+ * @param page The page
+ * @param notes List of zathura_note_t* to export
+ * @return ZATHURA_ERROR_OK or error code
+ */
+zathura_error_t zathura_page_export_notes(zathura_page_t* page, girara_list_t* notes);
+
 #endif // PAGE_H
