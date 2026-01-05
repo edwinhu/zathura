@@ -420,7 +420,7 @@ bool zathura_init(zathura_t* zathura) {
   }
 
   /* Set application ID */
-  g_set_prgname("org.pwmt.zathura");
+  g_set_prgname("zathura");
 
   /* Add variables for CSS */
   init_css(zathura);
