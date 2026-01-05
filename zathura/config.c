@@ -663,7 +663,7 @@ void config_load_default(zathura_t* zathura) {
   girara_inputbar_command_add(gsession, "bjump",      NULL,   cmd_bookmark_open,   cc_bookmarks, _("Jump to bookmark"));
   girara_inputbar_command_add(gsession, "jumplist",   NULL,   cmd_jumplist_list,   NULL,         _("Show recent jumps in jumplist"));
   girara_inputbar_command_add(gsession, "highlights", NULL,   cmd_highlights,      NULL,         _("List all highlights"));
-  girara_inputbar_command_add(gsession, "pick",       NULL,   cmd_pick,            NULL,         _("Open file picker"));
+  girara_inputbar_command_add(gsession, "files",      NULL,   cmd_files,           NULL,         _("Browse and search files"));
   girara_inputbar_command_add(gsession, "annotations_import", NULL, cmd_annot_import, NULL, _("Import all annotations from PDF (highlights and notes)"));
   girara_inputbar_command_add(gsession, "annotations_export", NULL, cmd_annot_export, NULL, _("Export all annotations to PDF (highlights and notes)"));
   girara_inputbar_command_add(gsession, "notes",    NULL,   cmd_notes,           NULL,         _("List all notes"));
