@@ -234,6 +234,69 @@ void cb_notes_search_changed(GtkEditable* editable, void* data);
 gboolean cb_notes_search_key_press(GtkWidget* widget, GdkEventKey* event, void* data);
 
 /**
+ * Called when a row is activated in the file picker panel
+ *
+ * @param tree_view The tree view widget
+ * @param path The path of the activated row
+ * @param column The column that was activated
+ * @param data The zathura instance
+ */
+void cb_file_picker_row_activated(GtkTreeView* tree_view, GtkTreePath* path,
+                                   GtkTreeViewColumn* column, void* data);
+
+/**
+ * Called when a key is pressed in the file picker panel
+ *
+ * @param widget The tree view widget
+ * @param event The key event
+ * @param data The zathura instance
+ * @return TRUE if handled, FALSE otherwise
+ */
+gboolean cb_file_picker_key_press(GtkWidget* widget, GdkEventKey* event, void* data);
+
+/**
+ * Called when the file picker search text changes
+ *
+ * @param editable The search entry
+ * @param data The filter model
+ */
+void cb_file_picker_search_changed(GtkEditable* editable, void* data);
+
+/**
+ * Called when a key is pressed in the file picker search entry
+ *
+ * @param widget The search entry
+ * @param event The key event
+ * @param data The filter model
+ * @return TRUE if handled, FALSE otherwise
+ */
+gboolean cb_file_picker_search_key_press(GtkWidget* widget, GdkEventKey* event, void* data);
+
+/**
+ * Schedule file open at a specific page (for content search results)
+ *
+ * @param zathura The zathura instance
+ * @param file_path Path to file to open
+ * @param page_num Page number (1-indexed, 0 for no specific page)
+ */
+void file_picker_schedule_open_at_page(zathura_t* zathura, const char* file_path, int page_num);
+
+/**
+ * Trigger content search with debouncing
+ *
+ * @param zathura The zathura instance
+ * @param query Search query
+ */
+void file_picker_trigger_content_search(zathura_t* zathura, const char* query);
+
+/**
+ * Refresh file list when switching from content to filename mode
+ *
+ * @param zathura The zathura instance
+ */
+void file_picker_refresh_file_list(zathura_t* zathura);
+
+/**
  * Called when input has been passed to the sc_follow dialog
  *
  * @param entry The dialog inputbar

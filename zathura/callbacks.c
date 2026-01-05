@@ -470,6 +470,18 @@ void cb_highlights_search_changed(GtkEditable* UNUSED(editable), void* data) {
 gboolean cb_highlights_search_key_press(GtkWidget* widget, GdkEventKey* event, void* data) {
   GtkEntry* entry = GTK_ENTRY(widget);
   GtkTreeModelFilter* filter = GTK_TREE_MODEL_FILTER(data);
+  zathura_t* zathura = g_object_get_data(G_OBJECT(widget), "zathura");
+
+  // Escape to close highlights panel
+  if (event->keyval == GDK_KEY_Escape) {
+    if (zathura != NULL && zathura->ui.highlights != NULL) {
+      gtk_widget_hide(zathura->ui.highlights);
+      if (zathura->ui.view != NULL) {
+        gtk_widget_grab_focus(zathura->ui.view);
+      }
+    }
+    return TRUE;
+  }
 
   // Toggle fuzzy/substring mode on Tab key
   if (event->keyval == GDK_KEY_Tab) {
@@ -610,6 +622,18 @@ void cb_notes_search_changed(GtkEditable* UNUSED(editable), void* data) {
 gboolean cb_notes_search_key_press(GtkWidget* widget, GdkEventKey* event, void* data) {
   GtkEntry* entry = GTK_ENTRY(widget);
   GtkTreeModelFilter* filter = GTK_TREE_MODEL_FILTER(data);
+  zathura_t* zathura = g_object_get_data(G_OBJECT(widget), "zathura");
+
+  // Escape to close notes panel
+  if (event->keyval == GDK_KEY_Escape) {
+    if (zathura != NULL && zathura->ui.notes != NULL) {
+      gtk_widget_hide(zathura->ui.notes);
+      if (zathura->ui.view != NULL) {
+        gtk_widget_grab_focus(zathura->ui.view);
+      }
+    }
+    return TRUE;
+  }
 
   // Toggle fuzzy/substring mode on Tab key
   if (event->keyval == GDK_KEY_Tab) {
@@ -634,6 +658,599 @@ gboolean cb_notes_search_key_press(GtkWidget* widget, GdkEventKey* event, void* 
   }
 
   return FALSE;  // Let other handlers process the event
+}
+
+/* File picker callbacks */
+
+/* Structure for deferred file open */
+typedef struct {
+  zathura_t* zathura;
+  char* file_path;
+  int page_num;  /* Page to navigate to (1-indexed from rga, 0 means no specific page) */
+} file_picker_open_data_t;
+
+/* Structure for content search */
+typedef struct {
+  zathura_t* zathura;
+  char* query;
+} file_picker_search_data_t;
+
+/* Idle callback to open file after event handler returns */
+static gboolean file_picker_deferred_open(gpointer user_data) {
+  file_picker_open_data_t* data = user_data;
+  zathura_t* zathura = data->zathura;
+  char* file_path = data->file_path;
+
+  g_message("FILE_PICKER: deferred_open called for '%s'", file_path ? file_path : "(null)");
+
+  if (zathura == NULL || file_path == NULL) {
+    g_free(file_path);
+    g_free(data);
+    return G_SOURCE_REMOVE;
+  }
+
+  /* Destroy file picker paned to restore original widget hierarchy */
+  if (zathura->ui.file_picker_paned != NULL) {
+    GtkWidget* paned = zathura->ui.file_picker_paned;
+    /* main_widget is in child1 (pack1=main_widget, pack2=file_picker) */
+    GtkWidget* main_widget = gtk_paned_get_child1(GTK_PANED(paned));
+    GtkWidget* parent = gtk_widget_get_parent(paned);
+
+    if (main_widget != NULL && parent != NULL) {
+      g_object_ref(main_widget);
+      gtk_container_remove(GTK_CONTAINER(paned), main_widget);
+      gtk_container_remove(GTK_CONTAINER(parent), paned);
+      gtk_container_add(GTK_CONTAINER(parent), main_widget);
+      g_object_unref(main_widget);
+
+      /* Immediately set visible child and ensure widget is shown */
+      if (GTK_IS_STACK(parent)) {
+        gtk_widget_set_visible(main_widget, TRUE);
+        gtk_stack_set_visible_child(GTK_STACK(parent), main_widget);
+        gtk_widget_grab_focus(main_widget);
+        g_message("FILE_PICKER: Set visible child on stack after re-adding main_widget=%p", (void*)main_widget);
+      }
+
+      /* Destroy the paned and its children (file_picker) */
+      gtk_widget_destroy(paned);
+    }
+
+    zathura->ui.file_picker_paned = NULL;
+    zathura->ui.file_picker = NULL;
+    zathura->ui.file_picker_search = NULL;
+  }
+
+  /* Close current document if any */
+  if (zathura_has_document(zathura)) {
+    document_close(zathura, false);
+  }
+
+  /* Open the selected file */
+  g_message("FILE_PICKER: Calling document_open for '%s'", file_path);
+  g_message("FILE_PICKER: Before document_open - mode=%u, view=%p, session=%p",
+            girara_mode_get(zathura->ui.session),
+            (void*)zathura->ui.view,
+            (void*)zathura->ui.session);
+
+  bool open_result = document_open(zathura, file_path, NULL, NULL, ZATHURA_PAGE_NUMBER_UNSPECIFIED, NULL);
+
+  g_message("FILE_PICKER: After document_open - result=%d, mode=%u, view parent=%p, session->gtk.view=%p",
+            open_result,
+            girara_mode_get(zathura->ui.session),
+            (void*)gtk_widget_get_parent(zathura->ui.view),
+            (void*)zathura->ui.session->gtk.view);
+
+  /* Ensure focus is properly set to the view after document open */
+  if (open_result && zathura->ui.view != NULL) {
+    g_message("FILE_PICKER: Explicitly grabbing focus on view");
+    gtk_widget_grab_focus(zathura->ui.view);
+
+    /* Navigate to specific page if set (from content search results) */
+    if (data->page_num > 0 && zathura->document != NULL) {
+      unsigned int num_pages = zathura_document_get_number_of_pages(zathura->document);
+      unsigned int page_id = (unsigned int)(data->page_num - 1);  /* Convert 1-indexed to 0-indexed */
+      if (page_id < num_pages) {
+        g_message("FILE_PICKER: Navigating to page %d (0-indexed: %u)", data->page_num, page_id);
+        page_set(zathura, page_id);
+      }
+    }
+
+    /* Debug: Check what has focus after grabbing */
+    GtkWidget* focused = gtk_window_get_focus(GTK_WINDOW(zathura->ui.session->gtk.window));
+    g_message("FILE_PICKER: After grab_focus - focused widget=%p (view=%p, stack=%p)",
+              (void*)focused, (void*)zathura->ui.view, (void*)zathura->ui.session->gtk.view);
+    g_message("FILE_PICKER: view is in stack: %s",
+              gtk_widget_get_parent(zathura->ui.view) == zathura->ui.session->gtk.view ? "YES" : "NO");
+    g_message("FILE_PICKER: stack visible child=%p",
+              (void*)gtk_stack_get_visible_child(GTK_STACK(zathura->ui.session->gtk.view)));
+    g_message("FILE_PICKER: view_key_pressed signal handler ID=%lu",
+              zathura->ui.session->signals.view_key_pressed);
+    g_message("FILE_PICKER: window can_focus=%d, view can_focus=%d",
+              gtk_widget_get_can_focus(zathura->ui.session->gtk.window),
+              gtk_widget_get_can_focus(zathura->ui.view));
+  }
+
+  g_free(file_path);
+  g_free(data);
+  return G_SOURCE_REMOVE;
+}
+
+/* Helper to schedule deferred file open */
+static void file_picker_schedule_open(zathura_t* zathura, const char* file_path) {
+  g_message("FILE_PICKER: scheduling deferred open for '%s'", file_path ? file_path : "(null)");
+  file_picker_open_data_t* data = g_new0(file_picker_open_data_t, 1);
+  data->zathura = zathura;
+  data->file_path = g_strdup(file_path);
+  data->page_num = 0;
+  g_idle_add(file_picker_deferred_open, data);
+}
+
+/* Helper to schedule deferred file open at specific page */
+void file_picker_schedule_open_at_page(zathura_t* zathura, const char* file_path, int page_num) {
+  g_message("FILE_PICKER: scheduling deferred open for '%s' at page %d", file_path ? file_path : "(null)", page_num);
+  file_picker_open_data_t* data = g_new0(file_picker_open_data_t, 1);
+  data->zathura = zathura;
+  data->file_path = g_strdup(file_path);
+  data->page_num = page_num;
+  g_idle_add(file_picker_deferred_open, data);
+}
+
+/* Callback for rga subprocess completion */
+static void file_picker_rga_callback(GObject* source_object, GAsyncResult* res, gpointer user_data) {
+  GSubprocess* proc = G_SUBPROCESS(source_object);
+  file_picker_search_data_t* search_data = user_data;
+  zathura_t* zathura = search_data->zathura;
+  GError* error = NULL;
+
+  char* stdout_buf = NULL;
+  char* stderr_buf = NULL;
+
+  g_subprocess_communicate_utf8_finish(proc, res, &stdout_buf, &stderr_buf, &error);
+
+  if (error != NULL) {
+    g_message("FILE_PICKER: rga error: %s", error->message);
+    g_error_free(error);
+    g_free(search_data->query);
+    g_free(search_data);
+    g_free(stdout_buf);
+    g_free(stderr_buf);
+    return;
+  }
+
+  /* Check if file picker still exists and we're still in content mode */
+  if (zathura->ui.file_picker == NULL) {
+    g_free(search_data->query);
+    g_free(search_data);
+    g_free(stdout_buf);
+    g_free(stderr_buf);
+    return;
+  }
+
+  GtkEntry* entry = GTK_ENTRY(zathura->ui.file_picker_search);
+  gboolean content_mode = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(entry), "content_search_mode"));
+  if (!content_mode) {
+    g_free(search_data->query);
+    g_free(search_data);
+    g_free(stdout_buf);
+    g_free(stderr_buf);
+    return;
+  }
+
+  /* Clear and populate results */
+  GtkListStore* store = g_object_get_data(G_OBJECT(zathura->ui.file_picker), "store");
+  gtk_list_store_clear(store);
+
+  if (stdout_buf != NULL && stdout_buf[0] != '\0') {
+    /* Parse rga output: filepath:line_num:Page N: content
+     * The page number is embedded in the content as "Page N:" prefix */
+    char** lines = g_strsplit(stdout_buf, "\n", -1);
+    for (int i = 0; lines[i] != NULL && lines[i][0] != '\0'; i++) {
+      char* line = lines[i];
+
+      /* Find first colon (end of filepath) */
+      char* first_colon = strchr(line, ':');
+      if (first_colon == NULL) continue;
+
+      /* Find second colon (end of line number) */
+      char* second_colon = strchr(first_colon + 1, ':');
+      if (second_colon == NULL) continue;
+
+      /* Extract components */
+      *first_colon = '\0';
+      char* file_path = line;
+      char* content = second_colon + 1;
+
+      /* Extract page number from content "Page N: ..." */
+      int page_num = 1;  /* Default to page 1 */
+      if (strncmp(content, "Page ", 5) == 0) {
+        page_num = atoi(content + 5);
+        /* Skip past "Page N: " to get actual content */
+        char* content_start = strchr(content + 5, ':');
+        if (content_start != NULL) {
+          content = content_start + 1;
+          while (*content == ' ') content++;  /* Skip leading spaces */
+        }
+      }
+
+      /* Get filename from path */
+      char* filename = strrchr(file_path, '/');
+      filename = filename ? filename + 1 : file_path;
+
+      /* Create display text: filename:page - context */
+      char display[512];
+      snprintf(display, sizeof(display), "%s:%d - %.60s%s",
+               filename, page_num, content,
+               strlen(content) > 60 ? "..." : "");
+
+      GtkTreeIter iter;
+      gtk_list_store_append(store, &iter);
+      gtk_list_store_set(store, &iter,
+          0, file_path,    /* Full path */
+          1, display,      /* Display text */
+          2, page_num,     /* Page number */
+          3, content,      /* Context snippet */
+          -1);
+    }
+    g_strfreev(lines);
+  }
+
+  /* Select first row */
+  GtkWidget* treeview = g_object_get_data(G_OBJECT(zathura->ui.file_picker), "treeview");
+  GtkTreeModel* model = gtk_tree_view_get_model(GTK_TREE_VIEW(treeview));
+  GtkTreeIter first_iter;
+  if (gtk_tree_model_get_iter_first(model, &first_iter)) {
+    GtkTreeSelection* selection = gtk_tree_view_get_selection(GTK_TREE_VIEW(treeview));
+    gtk_tree_selection_select_iter(selection, &first_iter);
+  }
+
+  g_free(search_data->query);
+  g_free(search_data);
+  g_free(stdout_buf);
+  g_free(stderr_buf);
+}
+
+/* Debounce timer callback for content search */
+static gboolean file_picker_content_search_timer_cb(gpointer user_data) {
+  file_picker_search_data_t* search_data = user_data;
+  zathura_t* zathura = search_data->zathura;
+
+  /* Check if file picker still exists */
+  if (zathura->ui.file_picker == NULL || zathura->ui.file_picker_search == NULL) {
+    g_free(search_data->query);
+    g_free(search_data);
+    return G_SOURCE_REMOVE;
+  }
+
+  /* Clear timer ID */
+  g_object_set_data(G_OBJECT(zathura->ui.file_picker_search), "content_search_timer", NULL);
+
+  const char* query = search_data->query;
+  if (query == NULL || query[0] == '\0') {
+    /* Empty query - clear results */
+    GtkListStore* store = g_object_get_data(G_OBJECT(zathura->ui.file_picker), "store");
+    if (store != NULL) {
+      gtk_list_store_clear(store);
+    }
+    g_free(search_data->query);
+    g_free(search_data);
+    return G_SOURCE_REMOVE;
+  }
+
+  g_message("FILE_PICKER: Running rga search for '%s'", query);
+
+  /* Build search paths */
+  const char* home = g_get_home_dir();
+  char* downloads = g_build_filename(home, "Downloads", NULL);
+  char* documents = g_build_filename(home, "Documents", NULL);
+  char* projects = g_build_filename(home, "projects", NULL);
+
+  /* Spawn rga subprocess */
+  GError* error = NULL;
+  GSubprocess* proc = g_subprocess_new(
+      G_SUBPROCESS_FLAGS_STDOUT_PIPE | G_SUBPROCESS_FLAGS_STDERR_PIPE,
+      &error,
+      "rga", "--color=never", "--no-heading", "--line-number",
+      "--max-count=50", "--type=pdf", query,
+      downloads, documents, projects,
+      NULL);
+
+  g_free(downloads);
+  g_free(documents);
+  g_free(projects);
+
+  if (error != NULL) {
+    g_message("FILE_PICKER: Failed to spawn rga: %s", error->message);
+    g_error_free(error);
+    g_free(search_data->query);
+    g_free(search_data);
+    return G_SOURCE_REMOVE;
+  }
+
+  /* Run async and handle results in callback */
+  g_subprocess_communicate_utf8_async(proc, NULL, NULL, file_picker_rga_callback, search_data);
+  g_object_unref(proc);
+
+  return G_SOURCE_REMOVE;
+}
+
+/* Trigger content search with debouncing */
+void file_picker_trigger_content_search(zathura_t* zathura, const char* query) {
+  g_message("FILE_PICKER: trigger_content_search called with query='%s'", query ? query : "(null)");
+  if (zathura->ui.file_picker_search == NULL) {
+    g_message("FILE_PICKER: file_picker_search is NULL, aborting");
+    return;
+  }
+
+  /* Cancel existing timer */
+  guint timer_id = GPOINTER_TO_UINT(g_object_get_data(G_OBJECT(zathura->ui.file_picker_search), "content_search_timer"));
+  if (timer_id > 0) {
+    g_source_remove(timer_id);
+  }
+
+  /* Create search data */
+  file_picker_search_data_t* search_data = g_new0(file_picker_search_data_t, 1);
+  search_data->zathura = zathura;
+  search_data->query = g_strdup(query);
+
+  /* Start debounce timer (300ms) */
+  timer_id = g_timeout_add(300, file_picker_content_search_timer_cb, search_data);
+  g_object_set_data(G_OBJECT(zathura->ui.file_picker_search), "content_search_timer", GUINT_TO_POINTER(timer_id));
+}
+
+/* Refresh file list (when switching from content to filename mode) */
+void file_picker_refresh_file_list(zathura_t* zathura) {
+  if (zathura->ui.file_picker == NULL) {
+    return;
+  }
+
+  GtkListStore* store = g_object_get_data(G_OBJECT(zathura->ui.file_picker), "store");
+  if (store == NULL) {
+    return;
+  }
+
+  gtk_list_store_clear(store);
+
+  /* Scan default directories */
+  const char* home = g_get_home_dir();
+  char* downloads = g_build_filename(home, "Downloads", NULL);
+  char* documents = g_build_filename(home, "Documents", NULL);
+  char* projects = g_build_filename(home, "projects", NULL);
+
+  /* These functions are in shortcuts.c - we need forward declarations */
+  extern void file_picker_scan_directory(const char* path, GtkListStore* store, int depth);
+  file_picker_scan_directory(downloads, store, 0);
+  file_picker_scan_directory(documents, store, 0);
+  file_picker_scan_directory(projects, store, 0);
+  file_picker_scan_directory("/tmp", store, 0);
+
+  g_free(downloads);
+  g_free(documents);
+  g_free(projects);
+
+  /* Select first row */
+  GtkWidget* treeview = g_object_get_data(G_OBJECT(zathura->ui.file_picker), "treeview");
+  GtkTreeModel* model = gtk_tree_view_get_model(GTK_TREE_VIEW(treeview));
+  GtkTreeIter first_iter;
+  if (gtk_tree_model_get_iter_first(model, &first_iter)) {
+    GtkTreeSelection* selection = gtk_tree_view_get_selection(GTK_TREE_VIEW(treeview));
+    gtk_tree_selection_select_iter(selection, &first_iter);
+  }
+
+  /* Refilter with current search text */
+  GtkTreeModelFilter* filter = g_object_get_data(G_OBJECT(zathura->ui.file_picker), "filter");
+  if (filter != NULL) {
+    gtk_tree_model_filter_refilter(filter);
+  }
+}
+
+void cb_file_picker_row_activated(GtkTreeView* tree_view, GtkTreePath* path,
+                                   GtkTreeViewColumn* UNUSED(column), void* data) {
+  zathura_t* zathura = data;
+  g_return_if_fail(zathura != NULL);
+
+  GtkTreeModel* model = gtk_tree_view_get_model(tree_view);
+  GtkTreeIter iter;
+  if (gtk_tree_model_get_iter(model, &iter, path)) {
+    char* file_path = NULL;
+    gtk_tree_model_get(model, &iter, 0, &file_path, -1);
+
+    if (file_path != NULL) {
+      /* Defer file open to avoid widget destruction during event callback */
+      file_picker_schedule_open(zathura, file_path);
+      g_free(file_path);
+    }
+  }
+}
+
+gboolean cb_file_picker_key_press(GtkWidget* widget, GdkEventKey* event, void* data) {
+  zathura_t* zathura = data;
+  g_return_val_if_fail(zathura != NULL, FALSE);
+
+  GtkTreeView* treeview = GTK_TREE_VIEW(widget);
+
+  /* Escape to close picker */
+  if (event->keyval == GDK_KEY_Escape) {
+    gtk_widget_hide(zathura->ui.file_picker);
+    if (zathura->ui.view != NULL) {
+      gtk_widget_grab_focus(zathura->ui.view);
+    }
+    return TRUE;
+  }
+
+  /* Enter to open selected file */
+  if (event->keyval == GDK_KEY_Return || event->keyval == GDK_KEY_KP_Enter) {
+    g_message("FILE_PICKER: Enter pressed on treeview");
+    GtkTreeSelection* selection = gtk_tree_view_get_selection(treeview);
+    GtkTreeModel* model;
+    GtkTreeIter iter;
+
+    if (gtk_tree_selection_get_selected(selection, &model, &iter)) {
+      char* file_path = NULL;
+      gtk_tree_model_get(model, &iter, 0, &file_path, -1);
+      g_message("FILE_PICKER: Selected file_path='%s'", file_path ? file_path : "(null)");
+
+      if (file_path != NULL) {
+        /* Defer file open to avoid widget destruction during event callback */
+        file_picker_schedule_open(zathura, file_path);
+        g_free(file_path);
+      }
+    } else {
+      g_message("FILE_PICKER: No selection found");
+    }
+    return TRUE;
+  }
+
+  /* Type to focus search entry */
+  if (event->keyval >= GDK_KEY_space && event->keyval <= GDK_KEY_asciitilde) {
+    gtk_widget_grab_focus(zathura->ui.file_picker_search);
+    /* Forward the keypress to search entry */
+    GdkEvent* new_event = gdk_event_copy((GdkEvent*)event);
+    gtk_widget_event(zathura->ui.file_picker_search, new_event);
+    gdk_event_free(new_event);
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+void cb_file_picker_search_changed(GtkEditable* editable, void* data) {
+  GtkEntry* entry = GTK_ENTRY(editable);
+  zathura_t* zathura = g_object_get_data(G_OBJECT(entry), "zathura");
+
+  gboolean content_mode = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(entry), "content_search_mode"));
+
+  if (content_mode) {
+    /* In content mode, trigger debounced rga search */
+    const char* text = gtk_entry_get_text(entry);
+    if (zathura != NULL) {
+      file_picker_trigger_content_search(zathura, text);
+    }
+  } else {
+    /* In filename mode, refilter the existing list */
+    GtkTreeModelFilter* filter = GTK_TREE_MODEL_FILTER(data);
+    gtk_tree_model_filter_refilter(filter);
+  }
+}
+
+gboolean cb_file_picker_search_key_press(GtkWidget* widget, GdkEventKey* event, void* data) {
+  zathura_t* zathura = data;
+  g_return_val_if_fail(zathura != NULL, FALSE);
+
+  g_message("FILE_PICKER: search_key_press called, keyval=%u", event->keyval);
+
+  GtkEntry* entry = GTK_ENTRY(widget);
+
+  /* Escape to close picker */
+  if (event->keyval == GDK_KEY_Escape) {
+    gtk_widget_hide(zathura->ui.file_picker);
+    if (zathura->ui.view != NULL) {
+      gtk_widget_grab_focus(zathura->ui.view);
+    }
+    return TRUE;
+  }
+
+  /* Ctrl+T to toggle content search mode */
+  g_message("FILE_PICKER: Checking Ctrl+T: keyval=%u (GDK_KEY_t=%u), state=0x%x, ctrl_mask=0x%x",
+            event->keyval, GDK_KEY_t, event->state, GDK_CONTROL_MASK);
+  if (event->keyval == GDK_KEY_t && (event->state & GDK_CONTROL_MASK)) {
+    g_message("FILE_PICKER: Ctrl+T detected, toggling content search mode");
+    gboolean content_mode = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(entry), "content_search_mode"));
+    content_mode = !content_mode;
+    g_object_set_data(G_OBJECT(entry), "content_search_mode", GINT_TO_POINTER(content_mode));
+
+    if (content_mode) {
+      gtk_entry_set_placeholder_text(entry, "[Ctrl+T: filename] Search PDF content...");
+      /* Clear file list - will be populated by rga results */
+      GtkListStore* store = g_object_get_data(G_OBJECT(zathura->ui.file_picker), "store");
+      if (store != NULL) {
+        gtk_list_store_clear(store);
+      }
+      /* Trigger search if there's existing text */
+      const char* text = gtk_entry_get_text(entry);
+      if (text != NULL && text[0] != '\0') {
+        file_picker_trigger_content_search(zathura, text);
+      }
+    } else {
+      gboolean fuzzy_mode = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(entry), "fuzzy_mode"));
+      if (fuzzy_mode) {
+        gtk_entry_set_placeholder_text(entry, "Search files [Tab: exact] [Ctrl+T: content]...");
+      } else {
+        gtk_entry_set_placeholder_text(entry, "Search files [Tab: fuzzy] [Ctrl+T: content]...");
+      }
+      /* Refresh file list */
+      file_picker_refresh_file_list(zathura);
+    }
+    return TRUE;
+  }
+
+  /* Tab to toggle fuzzy/exact mode (only in filename mode) */
+  if (event->keyval == GDK_KEY_Tab) {
+    gboolean content_mode = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(entry), "content_search_mode"));
+    if (content_mode) {
+      return TRUE; /* Ignore Tab in content mode */
+    }
+
+    gboolean fuzzy_mode = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(entry), "fuzzy_mode"));
+    fuzzy_mode = !fuzzy_mode;
+    g_object_set_data(G_OBJECT(entry), "fuzzy_mode", GINT_TO_POINTER(fuzzy_mode));
+
+    if (fuzzy_mode) {
+      gtk_entry_set_placeholder_text(entry, "Search files [Tab: exact] [Ctrl+T: content]...");
+    } else {
+      gtk_entry_set_placeholder_text(entry, "Search files [Tab: fuzzy] [Ctrl+T: content]...");
+    }
+
+    GtkTreeModelFilter* filter = g_object_get_data(
+        G_OBJECT(zathura->ui.file_picker), "filter");
+    if (filter != NULL) {
+      gtk_tree_model_filter_refilter(filter);
+    }
+    return TRUE;
+  }
+
+  /* Enter to open first/selected file */
+  if (event->keyval == GDK_KEY_Return || event->keyval == GDK_KEY_KP_Enter) {
+    g_message("FILE_PICKER: Enter pressed on search entry");
+    GtkWidget* treeview = g_object_get_data(G_OBJECT(zathura->ui.file_picker), "treeview");
+    GtkTreeSelection* selection = gtk_tree_view_get_selection(GTK_TREE_VIEW(treeview));
+    GtkTreeModel* model = gtk_tree_view_get_model(GTK_TREE_VIEW(treeview));
+    GtkTreeIter iter;
+
+    /* Try to get selected, or get first visible row */
+    if (!gtk_tree_selection_get_selected(selection, &model, &iter)) {
+      g_message("FILE_PICKER: No selection, trying first row");
+      if (!gtk_tree_model_get_iter_first(model, &iter)) {
+        g_message("FILE_PICKER: No rows in model");
+        return TRUE; /* No items */
+      }
+    }
+
+    char* file_path = NULL;
+    gint page_num = 0;
+    gtk_tree_model_get(model, &iter, 0, &file_path, 2, &page_num, -1);
+    g_message("FILE_PICKER: file_path='%s', page=%d", file_path ? file_path : "(null)", page_num);
+
+    if (file_path != NULL) {
+      /* Defer file open to avoid widget destruction during event callback */
+      /* Pass page number for content search results (0 means no specific page) */
+      file_picker_schedule_open_at_page(zathura, file_path, page_num);
+      g_free(file_path);
+    }
+    return TRUE;
+  }
+
+  /* Arrow keys to navigate list */
+  if (event->keyval == GDK_KEY_Down || event->keyval == GDK_KEY_Up) {
+    GtkWidget* treeview = g_object_get_data(G_OBJECT(zathura->ui.file_picker), "treeview");
+    gtk_widget_grab_focus(treeview);
+    /* Forward the keypress */
+    GdkEvent* new_event = gdk_event_copy((GdkEvent*)event);
+    gtk_widget_event(treeview, new_event);
+    gdk_event_free(new_event);
+    return TRUE;
+  }
+
+  return FALSE;
 }
 
 typedef enum zathura_link_action_e {

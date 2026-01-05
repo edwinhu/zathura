@@ -519,6 +519,7 @@ void config_load_default(zathura_t* zathura) {
   girara_shortcut_add(gsession, 0, 0, "zZ", sc_zoom, (mode), ZOOM_SPECIFIC, NULL);                                     \
                                                                                                                        \
   girara_shortcut_add(gsession, GDK_MOD1_MASK, GDK_KEY_o, NULL, sc_file_chooser, (mode), 0, NULL);                      \
+  girara_shortcut_add(gsession, GDK_CONTROL_MASK, GDK_KEY_o, NULL, sc_toggle_file_picker, (mode), 0, NULL);             \
                                                                                                                        \
   /* Highlight shortcuts: h=yellow, H=green, Ctrl-h=blue, Alt-h=red */                                                 \
   girara_shortcut_add(gsession, 0, GDK_KEY_h, NULL, sc_highlight, (mode), ZATHURA_HIGHLIGHT_YELLOW, NULL);              \
@@ -662,6 +663,7 @@ void config_load_default(zathura_t* zathura) {
   girara_inputbar_command_add(gsession, "bjump",      NULL,   cmd_bookmark_open,   cc_bookmarks, _("Jump to bookmark"));
   girara_inputbar_command_add(gsession, "jumplist",   NULL,   cmd_jumplist_list,   NULL,         _("Show recent jumps in jumplist"));
   girara_inputbar_command_add(gsession, "highlights", NULL,   cmd_highlights,      NULL,         _("List all highlights"));
+  girara_inputbar_command_add(gsession, "pick",       NULL,   cmd_pick,            NULL,         _("Open file picker"));
   girara_inputbar_command_add(gsession, "annotations_import", NULL, cmd_annot_import, NULL, _("Import all annotations from PDF (highlights and notes)"));
   girara_inputbar_command_add(gsession, "annotations_export", NULL, cmd_annot_export, NULL, _("Export all annotations to PDF (highlights and notes)"));
   girara_inputbar_command_add(gsession, "notes",    NULL,   cmd_notes,           NULL,         _("List all notes"));
@@ -703,6 +705,7 @@ void config_load_default(zathura_t* zathura) {
   girara_shortcut_mapping_add(gsession, "focus_inputbar",      sc_focus_inputbar);
   girara_shortcut_mapping_add(gsession, "follow",              sc_follow);
   girara_shortcut_mapping_add(gsession, "file_chooser",        sc_file_chooser);
+  girara_shortcut_mapping_add(gsession, "file_picker",         sc_toggle_file_picker);
   girara_shortcut_mapping_add(gsession, "goto",                sc_goto);
   girara_shortcut_mapping_add(gsession, "jumplist",            sc_jumplist);
   girara_shortcut_mapping_add(gsession, "mark_add",            sc_mark_add);

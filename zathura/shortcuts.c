@@ -25,9 +25,12 @@
 #include "document-widget.h"
 #include "note-popup.h"
 #include <math.h>
+#include <dirent.h>
+#include <sys/stat.h>
 
 /* Forward declarations */
 static bool highlights_geometry_match(girara_list_t* rects1, girara_list_t* rects2);
+static gboolean file_picker_grab_focus_cb(gpointer data);
 
 /* Helper function for highlighting the links */
 static bool draw_links(zathura_t* zathura) {
@@ -238,11 +241,18 @@ bool sc_copy_filepath(girara_session_t* session, girara_argument_t* UNUSED(argum
 
 bool sc_focus_inputbar(girara_session_t* session, girara_argument_t* argument, girara_event_t* UNUSED(event),
                        unsigned int UNUSED(t)) {
+  g_message("SC_FOCUS_INPUTBAR: called - session=%p, mode=%u",
+            (void*)session, session ? girara_mode_get(session) : 0);
   g_return_val_if_fail(session != NULL, false);
   g_return_val_if_fail(session->gtk.inputbar_entry != NULL, false);
   g_return_val_if_fail(session->global.data != NULL, false);
   zathura_t* zathura = session->global.data;
   g_return_val_if_fail(argument != NULL, false);
+
+  g_message("SC_FOCUS_INPUTBAR: document=%p, inputbar_entry=%p, inputbar visible=%d",
+            (void*)zathura->document,
+            (void*)session->gtk.inputbar_entry,
+            gtk_widget_get_visible(GTK_WIDGET(session->gtk.inputbar)));
 
   zathura_document_set_adjust_mode(zathura->document, ZATHURA_ADJUST_INPUTBAR);
 
@@ -1403,6 +1413,7 @@ bool sc_toggle_highlights(girara_session_t* session, girara_argument_t* UNUSED(a
 
     // Initialize fuzzy mode to TRUE (default to fuzzy matching)
     g_object_set_data(G_OBJECT(search_entry), "fuzzy_mode", GINT_TO_POINTER(TRUE));
+    g_object_set_data(G_OBJECT(search_entry), "zathura", zathura);
 
     // Create scrolled window
     GtkWidget* scrolled = gtk_scrolled_window_new(NULL, NULL);
@@ -1485,6 +1496,20 @@ bool sc_toggle_highlights(girara_session_t* session, girara_argument_t* UNUSED(a
     gtk_container_add(GTK_CONTAINER(view_parent), paned);
     gtk_widget_show(paned);
 
+    // Set paned position to show panel at ~200px height
+    // Position is from top, so subtract panel height from total
+    GtkAllocation alloc;
+    gtk_widget_get_allocation(view_parent, &alloc);
+    if (alloc.height > 250) {
+      gtk_paned_set_position(GTK_PANED(paned), alloc.height - 200);
+    }
+
+    // Ensure visible child is set for GtkStack (fixes keyboard freeze)
+    if (GTK_IS_STACK(view_parent)) {
+      gtk_widget_set_visible(paned, TRUE);
+      gtk_stack_set_visible_child(GTK_STACK(view_parent), paned);
+    }
+
     zathura->ui.highlights_paned = paned;
   }
 
@@ -1521,6 +1546,7 @@ refresh_and_show:
   // Show panel and focus search
   gtk_widget_show_all(zathura->ui.highlights);
   gtk_widget_grab_focus(zathura->ui.highlights_search);
+  g_timeout_add(100, file_picker_grab_focus_cb, zathura->ui.highlights_search);
 
   return false;
 }
@@ -2358,6 +2384,300 @@ error:
   return false;
 }
 
+/* File picker helper: Check if file extension is supported */
+static bool file_picker_is_supported_extension(const char* filename) {
+  const char* ext = strrchr(filename, '.');
+  if (ext == NULL) {
+    return false;
+  }
+  ext++; /* Skip the dot */
+
+  /* Supported document extensions */
+  const char* supported[] = {"pdf", "epub", "djvu", "ps", "cbz", "cbr", "xps", "oxps", NULL};
+  for (int i = 0; supported[i] != NULL; i++) {
+    if (g_ascii_strcasecmp(ext, supported[i]) == 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/* File picker helper: Recursively scan directory for documents */
+/* Exported for use by callbacks.c */
+void file_picker_scan_directory(const char* dir_path, GtkListStore* store, int depth) {
+  if (depth > 5) { /* Limit recursion depth */
+    return;
+  }
+
+  GDir* dir = g_dir_open(dir_path, 0, NULL);
+  if (dir == NULL) {
+    return;
+  }
+
+  const char* name;
+  while ((name = g_dir_read_name(dir)) != NULL) {
+    /* Skip hidden files/dirs */
+    if (name[0] == '.') {
+      continue;
+    }
+
+    char* full_path = g_build_filename(dir_path, name, NULL);
+    struct stat st;
+    if (stat(full_path, &st) == 0) {
+      if (S_ISDIR(st.st_mode)) {
+        /* Recurse into subdirectory */
+        file_picker_scan_directory(full_path, store, depth + 1);
+      } else if (S_ISREG(st.st_mode) && file_picker_is_supported_extension(name)) {
+        /* Add file to store with all 4 columns */
+        GtkTreeIter iter;
+        gtk_list_store_append(store, &iter);
+        gtk_list_store_set(store, &iter,
+            0, full_path,  /* Full path */
+            1, name,       /* Display text (filename in file mode) */
+            2, 0,          /* Page number (0 for filename mode) */
+            3, "",         /* Context (empty for filename mode) */
+            -1);
+      }
+    }
+    g_free(full_path);
+  }
+  g_dir_close(dir);
+}
+
+/* File picker filter function for fuzzy matching */
+static gboolean file_picker_filter_func(GtkTreeModel* model, GtkTreeIter* iter, gpointer data) {
+  GtkEntry* search_entry = GTK_ENTRY(data);
+
+  /* In content search mode, show all rows (rga already filtered results) */
+  gboolean content_mode = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(search_entry), "content_search_mode"));
+  if (content_mode) {
+    return TRUE;
+  }
+
+  const char* search_text = gtk_entry_get_text(search_entry);
+
+  if (search_text == NULL || search_text[0] == '\0') {
+    return TRUE; /* Show all when no search */
+  }
+
+  char* filename = NULL;
+  gtk_tree_model_get(model, iter, 1, &filename, -1);
+  if (filename == NULL) {
+    return FALSE;
+  }
+
+  /* Check for fuzzy mode */
+  gboolean fuzzy_mode = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(search_entry), "fuzzy_mode"));
+
+  gboolean match = FALSE;
+  if (fuzzy_mode) {
+    /* Fuzzy match: all search chars must appear in order */
+    const char* fp = filename;
+    const char* sp = search_text;
+    while (*sp != '\0' && *fp != '\0') {
+      if (g_ascii_tolower(*fp) == g_ascii_tolower(*sp)) {
+        sp++;
+      }
+      fp++;
+    }
+    match = (*sp == '\0');
+  } else {
+    /* Substring match */
+    char* lower_filename = g_ascii_strdown(filename, -1);
+    char* lower_search = g_ascii_strdown(search_text, -1);
+    match = (strstr(lower_filename, lower_search) != NULL);
+    g_free(lower_filename);
+    g_free(lower_search);
+  }
+
+  g_free(filename);
+  return match;
+}
+
+/* Helper for deferred focus grab - returns FALSE to run only once */
+static gboolean file_picker_grab_focus_cb(gpointer data) {
+  GtkWidget* widget = GTK_WIDGET(data);
+  if (GTK_IS_WIDGET(widget) && gtk_widget_get_visible(widget)) {
+    gtk_widget_grab_focus(widget);
+  }
+  return G_SOURCE_REMOVE;
+}
+
+bool sc_toggle_file_picker(girara_session_t* session, girara_argument_t* UNUSED(argument),
+                           girara_event_t* UNUSED(event), unsigned int UNUSED(t)) {
+  g_return_val_if_fail(session != NULL, false);
+  g_return_val_if_fail(session->global.data != NULL, false);
+  zathura_t* zathura = session->global.data;
+
+  g_message("FILE_PICKER: sc_toggle_file_picker called");
+
+  /* If paned exists, toggle visibility */
+  if (zathura->ui.file_picker_paned != NULL) {
+    gboolean visible = gtk_widget_get_visible(zathura->ui.file_picker);
+    if (visible) {
+      gtk_widget_hide(zathura->ui.file_picker);
+      if (zathura->ui.view != NULL) {
+        gtk_widget_grab_focus(zathura->ui.view);
+      }
+    } else {
+      goto refresh_and_show;
+    }
+    return true;
+  }
+
+  /* Create file picker panel if doesn't exist */
+  if (zathura->ui.file_picker == NULL) {
+    GtkWidget* vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+
+    /* Create search entry */
+    GtkWidget* search_entry = gtk_entry_new();
+    gtk_entry_set_placeholder_text(GTK_ENTRY(search_entry), "Search files [Tab: exact] [Ctrl+T: content]...");
+    gtk_box_pack_start(GTK_BOX(vbox), search_entry, FALSE, FALSE, 0);
+    zathura->ui.file_picker_search = search_entry;
+
+    /* Initialize modes */
+    g_object_set_data(G_OBJECT(search_entry), "fuzzy_mode", GINT_TO_POINTER(TRUE));
+    g_object_set_data(G_OBJECT(search_entry), "content_search_mode", GINT_TO_POINTER(FALSE));
+    g_object_set_data(G_OBJECT(search_entry), "zathura", zathura);
+
+    /* Create scrolled window */
+    GtkWidget* scrolled = gtk_scrolled_window_new(NULL, NULL);
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scrolled),
+                                    GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
+    gtk_box_pack_start(GTK_BOX(vbox), scrolled, TRUE, TRUE, 0);
+
+    /* Create list store: full_path, display_text, page_num, context
+     * - Column 0: Full file path (for opening)
+     * - Column 1: Display text (filename in file mode, filename:page - context in content mode)
+     * - Column 2: Page number (0 for filename mode, 1-indexed for content mode)
+     * - Column 3: Context snippet (empty for filename mode)
+     */
+    GtkListStore* store = gtk_list_store_new(4, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_INT, G_TYPE_STRING);
+
+    /* Create filter model */
+    GtkTreeModel* filter = gtk_tree_model_filter_new(GTK_TREE_MODEL(store), NULL);
+    gtk_tree_model_filter_set_visible_func(GTK_TREE_MODEL_FILTER(filter),
+        file_picker_filter_func, search_entry, NULL);
+
+    /* Create tree view */
+    GtkWidget* treeview = gtk_tree_view_new_with_model(filter);
+    gtk_tree_view_set_headers_visible(GTK_TREE_VIEW(treeview), FALSE);
+
+    /* Single column showing display text (column 1) */
+    GtkCellRenderer* renderer = gtk_cell_renderer_text_new();
+    g_object_set(renderer, "ellipsize", PANGO_ELLIPSIZE_END, NULL);
+    GtkTreeViewColumn* column = gtk_tree_view_column_new_with_attributes(
+        "File", renderer, "text", 1, NULL);
+    gtk_tree_view_column_set_expand(column, TRUE);
+    gtk_tree_view_append_column(GTK_TREE_VIEW(treeview), column);
+
+    gtk_container_add(GTK_CONTAINER(scrolled), treeview);
+
+    /* Connect signals */
+    g_signal_connect(search_entry, "changed",
+        G_CALLBACK(cb_file_picker_search_changed), filter);
+    g_signal_connect(search_entry, "key-press-event",
+        G_CALLBACK(cb_file_picker_search_key_press), zathura);
+    g_signal_connect(treeview, "row-activated",
+        G_CALLBACK(cb_file_picker_row_activated), zathura);
+    g_signal_connect(treeview, "key-press-event",
+        G_CALLBACK(cb_file_picker_key_press), zathura);
+
+    /* Store references */
+    g_object_set_data(G_OBJECT(vbox), "treeview", treeview);
+    g_object_set_data(G_OBJECT(vbox), "store", store);
+    g_object_set_data(G_OBJECT(vbox), "filter", filter);
+
+    /* Set minimum size */
+    gtk_widget_set_size_request(vbox, -1, 300);
+
+    zathura->ui.file_picker = vbox;
+  }
+
+  /* Create paned container */
+  if (zathura->ui.file_picker_paned == NULL) {
+    GtkWidget* paned = gtk_paned_new(GTK_ORIENTATION_VERTICAL);
+
+    /* Get the main content widget */
+    GtkWidget* main_widget = zathura->ui.view;
+    if (zathura->ui.notes_paned != NULL) {
+      main_widget = zathura->ui.notes_paned;
+    } else if (zathura->ui.highlights_paned != NULL) {
+      main_widget = zathura->ui.highlights_paned;
+    }
+
+    GtkWidget* parent = gtk_widget_get_parent(main_widget);
+    g_object_ref(main_widget);
+    gtk_container_remove(GTK_CONTAINER(parent), main_widget);
+
+    /* Add to paned: content on top, file picker on bottom (like highlights/notes) */
+    gtk_paned_pack1(GTK_PANED(paned), main_widget, TRUE, FALSE);
+    gtk_paned_pack2(GTK_PANED(paned), zathura->ui.file_picker, FALSE, FALSE);
+    g_object_unref(main_widget);
+
+    gtk_container_add(GTK_CONTAINER(parent), paned);
+    gtk_widget_show(paned);
+
+    zathura->ui.file_picker_paned = paned;
+  }
+
+refresh_and_show:
+  ;
+
+  /* Populate/refresh the file list */
+  GtkListStore* store = g_object_get_data(G_OBJECT(zathura->ui.file_picker), "store");
+  gtk_list_store_clear(store);
+
+  /* Scan default directories */
+  const char* home = g_get_home_dir();
+  char* downloads = g_build_filename(home, "Downloads", NULL);
+  char* documents = g_build_filename(home, "Documents", NULL);
+  char* projects = g_build_filename(home, "projects", NULL);
+
+  file_picker_scan_directory(downloads, store, 0);
+  file_picker_scan_directory(documents, store, 0);
+  file_picker_scan_directory(projects, store, 0);
+  file_picker_scan_directory("/tmp", store, 0);
+
+  g_free(downloads);
+  g_free(documents);
+  g_free(projects);
+
+  /* Show panel */
+  gtk_widget_show_all(zathura->ui.file_picker);
+
+  /* Request window focus from compositor (important for Wayland) */
+  GtkWidget* toplevel = gtk_widget_get_toplevel(zathura->ui.file_picker);
+  if (GTK_IS_WINDOW(toplevel)) {
+    gtk_window_present_with_time(GTK_WINDOW(toplevel), GDK_CURRENT_TIME);
+  }
+
+  /* Select first row and focus treeview so Enter works immediately */
+  GtkWidget* treeview = g_object_get_data(G_OBJECT(zathura->ui.file_picker), "treeview");
+  if (treeview != NULL) {
+    GtkTreeModel* model = gtk_tree_view_get_model(GTK_TREE_VIEW(treeview));
+    GtkTreeIter iter;
+    if (gtk_tree_model_get_iter_first(model, &iter)) {
+      GtkTreeSelection* selection = gtk_tree_view_get_selection(GTK_TREE_VIEW(treeview));
+      gtk_tree_selection_select_iter(selection, &iter);
+      /* Also set cursor to first row for keyboard navigation */
+      GtkTreePath* path = gtk_tree_model_get_path(model, &iter);
+      gtk_tree_view_set_cursor(GTK_TREE_VIEW(treeview), path, NULL, FALSE);
+      gtk_tree_path_free(path);
+    }
+  }
+
+  /* Focus search entry for immediate typing (fzf-style)
+   * Use deferred focus grab to run after girara finishes command processing */
+  if (zathura->ui.file_picker_search != NULL) {
+    gtk_widget_grab_focus(zathura->ui.file_picker_search);
+    /* Also schedule delayed focus grab in case girara steals focus back */
+    g_timeout_add(100, file_picker_grab_focus_cb, zathura->ui.file_picker_search);
+  }
+
+  return false;  /* Return false like highlights/notes panels to preserve focus */
+}
+
 /**
  * Callback function for note popup save
  */
@@ -2664,6 +2984,7 @@ bool sc_toggle_notes(girara_session_t* session, girara_argument_t* UNUSED(argume
 
     // Initialize fuzzy mode to TRUE (default to fuzzy matching)
     g_object_set_data(G_OBJECT(search_entry), "fuzzy_mode", GINT_TO_POINTER(TRUE));
+    g_object_set_data(G_OBJECT(search_entry), "zathura", zathura);
 
     // Create scrolled window
     GtkWidget* scrolled = gtk_scrolled_window_new(NULL, NULL);
@@ -2740,6 +3061,20 @@ bool sc_toggle_notes(girara_session_t* session, girara_argument_t* UNUSED(argume
     gtk_container_add(GTK_CONTAINER(view_parent), paned);
     gtk_widget_show(paned);
 
+    // Set paned position to show panel at ~200px height
+    // Position is from top, so subtract panel height from total
+    GtkAllocation alloc;
+    gtk_widget_get_allocation(view_parent, &alloc);
+    if (alloc.height > 250) {
+      gtk_paned_set_position(GTK_PANED(paned), alloc.height - 200);
+    }
+
+    // Ensure visible child is set for GtkStack (fixes keyboard freeze)
+    if (GTK_IS_STACK(view_parent)) {
+      gtk_widget_set_visible(paned, TRUE);
+      gtk_stack_set_visible_child(GTK_STACK(view_parent), paned);
+    }
+
     zathura->ui.notes_paned = paned;
   }
 
@@ -2799,6 +3134,7 @@ refresh_and_show:
   // Show panel and focus search
   gtk_widget_show_all(zathura->ui.notes);
   gtk_widget_grab_focus(zathura->ui.notes_search);
+  g_timeout_add(100, file_picker_grab_focus_cb, zathura->ui.notes_search);
 
   return false;
 }

@@ -1533,6 +1533,34 @@ bool document_close(zathura_t* zathura, bool keep_monitor) {
     zathura_note_popup_hide(zathura->ui.note_popup);
   }
 
+  /* Clean up file picker paned if active */
+  if (zathura->ui.file_picker_paned != NULL) {
+    GtkWidget* fp_paned = zathura->ui.file_picker_paned;
+    GtkWidget* main_widget = gtk_paned_get_child1(GTK_PANED(fp_paned));
+    GtkWidget* fp_parent = gtk_widget_get_parent(fp_paned);
+
+    if (main_widget != NULL && fp_parent != NULL) {
+      g_object_ref(main_widget);
+      gtk_container_remove(GTK_CONTAINER(fp_paned), main_widget);
+      gtk_container_remove(GTK_CONTAINER(fp_parent), fp_paned);
+      gtk_container_add(GTK_CONTAINER(fp_parent), main_widget);
+      g_object_unref(main_widget);
+
+      /* Ensure widget is set as visible child of the stack */
+      if (GTK_IS_STACK(fp_parent)) {
+        gtk_widget_set_visible(main_widget, TRUE);
+        gtk_stack_set_visible_child(GTK_STACK(fp_parent), main_widget);
+      }
+
+      /* Destroy the paned and its children (file_picker) */
+      gtk_widget_destroy(fp_paned);
+    }
+
+    zathura->ui.file_picker_paned = NULL;
+    zathura->ui.file_picker = NULL;
+    zathura->ui.file_picker_search = NULL;
+  }
+
   /* Clean up notes/highlights panels to avoid widget reparenting issues on reload */
   if (zathura->ui.notes_paned != NULL || zathura->ui.highlights_paned != NULL) {
     GtkWidget* paned = zathura->ui.notes_paned ? zathura->ui.notes_paned : zathura->ui.highlights_paned;
@@ -1553,6 +1581,12 @@ bool document_close(zathura_t* zathura, bool keep_monitor) {
       gtk_container_remove(GTK_CONTAINER(paned_parent), paned);
       gtk_container_add(GTK_CONTAINER(paned_parent), zathura->ui.view);
       g_object_unref(zathura->ui.view);
+
+      /* Ensure view is set as visible child of the stack */
+      if (GTK_IS_STACK(paned_parent)) {
+        gtk_widget_set_visible(zathura->ui.view, TRUE);
+        gtk_stack_set_visible_child(GTK_STACK(paned_parent), zathura->ui.view);
+      }
     }
 
     zathura->ui.notes_paned = NULL;

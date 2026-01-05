@@ -61,6 +61,15 @@ bool cmd_jumplist_list(girara_session_t* session, girara_list_t* argument_list);
 bool cmd_highlights(girara_session_t* session, girara_list_t* argument_list);
 
 /**
+ * Toggle file picker panel
+ *
+ * @param session The used girara session
+ * @param argument_list List of passed arguments
+ * @return true if no error occurred
+ */
+bool cmd_pick(girara_session_t* session, girara_list_t* argument_list);
+
+/**
  * List all notes
  *
  * @param session The used girara session

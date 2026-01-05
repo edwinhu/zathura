@@ -373,6 +373,17 @@ bool sc_snap_to_page(girara_session_t* session, girara_argument_t* argument, gir
 bool sc_file_chooser(girara_session_t* session, girara_argument_t* argument, girara_event_t* event, unsigned int t);
 
 /**
+ * Toggle the fzf-like file picker panel
+ *
+ * @param session The used girara session
+ * @param argument The used argument
+ * @param event Girara event
+ * @param t Number of executions
+ * @return true if no error occurred otherwise false
+ */
+bool sc_toggle_file_picker(girara_session_t* session, girara_argument_t* argument, girara_event_t* event, unsigned int t);
+
+/**
  * Create a highlight from the current selection
  *
  * @param session The used girara session

@@ -124,6 +124,12 @@ bool cmd_highlights(girara_session_t* session, girara_list_t* GIRARA_UNUSED(argu
   return sc_toggle_highlights(session, NULL, NULL, 0);
 }
 
+bool cmd_pick(girara_session_t* session, girara_list_t* GIRARA_UNUSED(argument_list)) {
+  g_return_val_if_fail(session != NULL, false);
+  g_return_val_if_fail(session->global.data != NULL, false);
+  return sc_toggle_file_picker(session, NULL, NULL, 0);
+}
+
 bool cmd_notes(girara_session_t* session, girara_list_t* GIRARA_UNUSED(argument_list)) {
   g_return_val_if_fail(session != NULL, false);
   g_return_val_if_fail(session->global.data != NULL, false);

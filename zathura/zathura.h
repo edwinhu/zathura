@@ -126,6 +126,9 @@ struct zathura_s {
     GtkWidget* notes_paned;       /**< Paned container for document + notes */
     GtkWidget* notes;             /**< Widget to show notes list */
     GtkWidget* notes_search;      /**< Search entry for notes filter */
+    GtkWidget* file_picker;       /**< Widget for fzf-like file picker */
+    GtkWidget* file_picker_search; /**< Search entry for file picker */
+    GtkWidget* file_picker_paned; /**< Paned container for file picker */
   } ui;
 
   struct {
