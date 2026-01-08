@@ -42,3 +42,4 @@ _*/
 LEARNINGS*.md
 plugins/
 tries/
+.cache/
