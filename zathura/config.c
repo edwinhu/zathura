@@ -653,7 +653,7 @@ void config_load_default(zathura_t* zathura) {
                      cb_show_signature_info, NULL);
   girara_setting_add(gsession, "scrollbar-fg", "#DDDDDD", STRING, FALSE, _("Scrollbar foreground color"), cb_color, NULL);
   girara_setting_add(gsession, "scrollbar-bg", "#000000", STRING, FALSE, _("Scrollbar background color"), cb_color, NULL);
-  girara_setting_add(gsession, "view-options", "", STRING, FALSE, _("Show or hide view UI elements"), cb_view_options, NULL);
+  girara_setting_add(gsession, "view-options", "", STRING, FALSE, _("Show or hide view UI elements"), NULL, NULL);
   girara_setting_add(gsession, "readwise-token-file", "", STRING, false, _("Path to file containing Readwise API token"), NULL, NULL);
 
 
