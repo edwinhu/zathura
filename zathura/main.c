@@ -23,6 +23,30 @@
 #include "synctex.h"
 #endif
 
+#ifdef GTKOSXAPPLICATION
+static zathura_t* g_macos_zathura = NULL;
+
+static gboolean macos_open_file_cb(GtkosxApplication* app, gchar* path, gpointer user_data) {
+  (void)app;
+  (void)user_data;
+
+  if (g_macos_zathura == NULL) {
+    girara_error("Cannot open file: zathura not initialized");
+    return FALSE;
+  }
+
+  if (path == NULL || strlen(path) == 0) {
+    girara_debug("Received empty path in open file callback");
+    return FALSE;
+  }
+
+  girara_debug("macOS open file request: %s", path);
+  document_open_idle(g_macos_zathura, path, NULL, ZATHURA_PAGE_NUMBER_UNSPECIFIED, NULL, NULL, NULL, NULL);
+
+  return TRUE;
+}
+#endif
+
 /* Handle synctex forward synchronization */
 #ifdef WITH_SYNCTEX
 static int run_synctex_forward(const char* synctex_fwd, const char* filename, int synctex_pid) {
@@ -260,16 +284,12 @@ GIRARA_VISIBLE int main(int argc, char* argv[]) {
   }
 
 #ifdef GTKOSXAPPLICATION
+  g_macos_zathura = zathura;
   GtkosxApplication* zathuraApp = g_object_new(GTKOSX_TYPE_APPLICATION, NULL);
+  g_signal_connect(zathuraApp, "NSApplicationOpenFile", G_CALLBACK(macos_open_file_cb), NULL);
   gtkosx_application_set_use_quartz_accelerators(zathuraApp, FALSE);
   gtkosx_application_ready(zathuraApp);
-  {
-    const gchar* id = gtkosx_application_get_bundle_id();
-    if (id != NULL) {
-      girara_warning("TestIntegration Error! Bundle has ID %s", id);
-    }
-  }
-#endif // GTKOSXAPPLICATION
+#endif
 
   /* run zathura */
   gtk_main();
