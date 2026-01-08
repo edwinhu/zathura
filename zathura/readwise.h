@@ -23,11 +23,13 @@ typedef enum readwise_result_e {
  * @param highlights List of zathura_highlight_t* to sync
  * @param title Document title
  * @param author Document author (can be NULL)
+ * @param token Readwise API token (if NULL, reads from READWISE_TOKEN env var)
  * @return Result code indicating success or failure type
  */
 readwise_result_t readwise_sync_highlights(girara_list_t* highlights,
                                            const char* title,
-                                           const char* author);
+                                           const char* author,
+                                           const char* token);
 
 /**
  * Get human-readable message for result code

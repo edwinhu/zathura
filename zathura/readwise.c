@@ -97,18 +97,18 @@ static char* build_json_payload(girara_list_t* highlights, const char* title, co
   return json_str;
 }
 
-/**
- * Sync highlights to Readwise API
- */
 readwise_result_t readwise_sync_highlights(girara_list_t* highlights,
                                            const char* title,
-                                           const char* author) {
+                                           const char* author,
+                                           const char* token) {
   if (highlights == NULL || title == NULL) {
     return READWISE_ERROR_JSON;
   }
 
-  // Check for READWISE_TOKEN environment variable
-  const char* token = g_getenv("READWISE_TOKEN");
+  /* Use provided token, or fall back to READWISE_TOKEN env var */
+  if (token == NULL || strlen(token) == 0) {
+    token = g_getenv("READWISE_TOKEN");
+  }
   if (token == NULL || strlen(token) == 0) {
     return READWISE_ERROR_NO_TOKEN;
   }

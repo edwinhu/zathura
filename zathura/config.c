@@ -402,6 +402,7 @@ void config_load_default(zathura_t* zathura) {
   girara_setting_add(gsession, "scrollbar-fg", "#DDDDDD", STRING, FALSE, _("Scrollbar foreground color"), cb_color, NULL);
   girara_setting_add(gsession, "scrollbar-bg", "#000000", STRING, FALSE, _("Scrollbar background color"), cb_color, NULL);
   girara_setting_add(gsession, "view-options", "", STRING, FALSE, _("Show or hide view UI elements"), cb_view_options, NULL);
+  girara_setting_add(gsession, "readwise-token-file", "", STRING, false, _("Path to file containing Readwise API token"), NULL, NULL);
 
 #define DEFAULT_SHORTCUTS(mode)                                                                                        \
   girara_shortcut_add(gsession, 0, GDK_KEY_a, NULL, sc_adjust_window, (mode), ZATHURA_ADJUST_BESTFIT, NULL);           \

@@ -683,8 +683,25 @@ bool cmd_readwise_sync(girara_session_t* session, girara_list_t* GIRARA_UNUSED(a
     title = zathura_document_get_basename(zathura->document);
   }
 
+  /* Get token: config file > READWISE_TOKEN_FILE env > READWISE_TOKEN env */
+  char* token = NULL;
+  char* token_file = NULL;
+  girara_setting_get(session, "readwise-token-file", &token_file);
+  if (token_file == NULL || strlen(token_file) == 0) {
+    g_free(token_file);
+    token_file = g_strdup(g_getenv("READWISE_TOKEN_FILE"));
+  }
+  if (token_file != NULL && strlen(token_file) > 0) {
+    g_file_get_contents(token_file, &token, NULL, NULL);
+    if (token != NULL) {
+      g_strstrip(token);
+    }
+  }
+  g_free(token_file);
+
   /* Sync to Readwise */
-  readwise_result_t result = readwise_sync_highlights(highlights, title, author);
+  readwise_result_t result = readwise_sync_highlights(highlights, title, author, token);
+  g_free(token);
 
   /* Report result */
   if (result == READWISE_OK) {
