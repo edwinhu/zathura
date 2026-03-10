@@ -860,7 +860,7 @@ static int document_page_size_comp(const void* a, const void* b) {
 
 static void document_open_page_most_frequent_size(zathura_document_t* document, unsigned int* width,
                                                   unsigned int* height) {
-  girara_list_t* samples             = girara_list_new2(g_free);
+  girara_list_t* samples             = girara_list_new_with_free(g_free);
   const unsigned int number_of_pages = zathura_document_get_number_of_pages(document);
 
   for (unsigned int page_id = 0; page_id < number_of_pages; ++page_id) {
@@ -1226,7 +1226,7 @@ bool document_open(zathura_t* zathura, const char* path, const char* uri, const 
               page_highlights[hl->page] = girara_list_new();
             }
             /* Copy highlight to page list - deep copy the rects list */
-            girara_list_t* rects_copy = girara_list_new2(g_free);
+            girara_list_t* rects_copy = girara_list_new_with_free(g_free);
             for (size_t r = 0; r < girara_list_size(hl->rects); r++) {
               zathura_rectangle_t* rect = girara_list_nth(hl->rects, r);
               zathura_rectangle_t* rc = g_malloc(sizeof(zathura_rectangle_t));

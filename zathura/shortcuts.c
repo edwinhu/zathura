@@ -1902,7 +1902,7 @@ bool sc_highlight(girara_session_t* session, girara_argument_t* argument, girara
   }
 
   /* Copy selection rectangles and compute bounding box for text extraction */
-  girara_list_t* rects_copy = girara_list_new2(g_free);
+  girara_list_t* rects_copy = girara_list_new_with_free(g_free);
   zathura_rectangle_t bounds = {0, 0, 0, 0};
   bool first = true;
   for (size_t i = 0; i < girara_list_size(selection_list); i++) {
@@ -2013,7 +2013,7 @@ bool sc_delete_highlight(girara_session_t* session, girara_argument_t* UNUSED(ar
         if (hl != NULL && hl->id != NULL && g_strcmp0(hl->id, id_copy) == 0) {
           /* Found target highlight - copy its rects for later matching */
           if (hl->rects != NULL && girara_list_size(hl->rects) > 0) {
-            target_rects = girara_list_new2(g_free);
+            target_rects = girara_list_new_with_free(g_free);
             for (size_t i = 0; i < girara_list_size(hl->rects); i++) {
               zathura_rectangle_t* src = girara_list_nth(hl->rects, i);
               if (src != NULL) {
@@ -2053,7 +2053,7 @@ bool sc_delete_highlight(girara_session_t* session, girara_argument_t* UNUSED(ar
             /* Found matching embedded - set up confirmation */
             zathura->global.embedded_delete_pending = true;
             zathura->global.embedded_delete_page = page_id;
-            zathura->global.embedded_delete_rects = girara_list_new2(g_free);
+            zathura->global.embedded_delete_rects = girara_list_new_with_free(g_free);
             for (size_t i = 0; i < girara_list_size(emb_hl->rects); i++) {
               zathura_rectangle_t* src = girara_list_nth(emb_hl->rects, i);
               if (src != NULL) {
@@ -2103,7 +2103,7 @@ bool sc_delete_highlight(girara_session_t* session, girara_argument_t* UNUSED(ar
       if (zathura->global.embedded_delete_rects != NULL) {
         girara_list_free(zathura->global.embedded_delete_rects);
       }
-      zathura->global.embedded_delete_rects = girara_list_new2(g_free);
+      zathura->global.embedded_delete_rects = girara_list_new_with_free(g_free);
       for (size_t i = 0; i < girara_list_size(embedded_rects); i++) {
         zathura_rectangle_t* src = girara_list_nth(embedded_rects, i);
         if (src != NULL) {

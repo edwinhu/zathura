@@ -1069,7 +1069,7 @@ static girara_list_t* json_to_rects(const char* json_str) {
     return NULL;
   }
 
-  girara_list_t* rects = girara_list_new2(g_free);
+  girara_list_t* rects = girara_list_new_with_free(g_free);
   if (rects == NULL) {
     return NULL;
   }

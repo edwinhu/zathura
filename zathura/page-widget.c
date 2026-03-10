@@ -1482,7 +1482,7 @@ static gboolean cb_zathura_page_widget_button_press_event(GtkWidget* widget, Gdk
                   girara_list_free(priv->highlights.embedded_selected_rects);
                 }
                 /* Copy rects for selection */
-                priv->highlights.embedded_selected_rects = girara_list_new2(g_free);
+                priv->highlights.embedded_selected_rects = girara_list_new_with_free(g_free);
                 for (size_t cr = 0; cr < girara_list_size(hl->rects); cr++) {
                   zathura_rectangle_t* src = girara_list_nth(hl->rects, cr);
                   if (src != NULL) {
@@ -1927,7 +1927,7 @@ void zathura_page_widget_add_highlight(ZathuraPageWidget* widget, zathura_highli
 
   /* Create list if it doesn't exist */
   if (priv->highlights.list == NULL) {
-    priv->highlights.list = girara_list_new2(highlight_free_func);
+    priv->highlights.list = girara_list_new_with_free(highlight_free_func);
   }
 
   girara_list_append(priv->highlights.list, highlight);
@@ -2021,7 +2021,7 @@ void zathura_page_widget_add_note(ZathuraPageWidget* widget, zathura_note_t* not
 
   /* Create list if it doesn't exist */
   if (priv->notes.list == NULL) {
-    priv->notes.list = girara_list_new2(note_free_func);
+    priv->notes.list = girara_list_new_with_free(note_free_func);
   }
 
   girara_list_append(priv->notes.list, note);

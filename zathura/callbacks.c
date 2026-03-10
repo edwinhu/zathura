@@ -585,7 +585,7 @@ gboolean cb_notes_key_press(GtkWidget* widget, GdkEventKey* event, void* data) {
 
           // Also delete from embedded PDF (blue annotation)
           // Create a small rectangle around the note position for deletion
-          girara_list_t* rects = girara_list_new2(g_free);
+          girara_list_t* rects = girara_list_new_with_free(g_free);
           zathura_rectangle_t* rect = g_malloc(sizeof(zathura_rectangle_t));
           // Note icons are typically small - use a 1x1 point around the position
           rect->x1 = note_x;
