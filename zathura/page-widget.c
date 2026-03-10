@@ -1262,6 +1262,7 @@ static gboolean cb_zathura_page_widget_button_press_event(GtkWidget* widget, Gdk
   if (priv->zathura->global.note_placement_mode &&
       button->button == GDK_BUTTON_PRIMARY && button->type == GDK_BUTTON_PRESS) {
     /* Convert widget coordinates to PDF coordinates */
+    zathura_document_t* document = zathura_page_get_document(priv->page);
     double scale = zathura_document_get_scale(document);
     double page_height = zathura_page_get_height(priv->page);
     double page_width = zathura_page_get_width(priv->page);
@@ -1880,14 +1881,14 @@ zathura_page_t* zathura_page_widget_get_page(ZathuraPageWidget* widget) {
 }
 
 girara_list_t* zathura_page_widget_get_selection(ZathuraPageWidget* widget) {
-  g_return_val_if_fail(ZATHURA_IS_PAGE(widget), NULL);
+  g_return_val_if_fail(ZATHURA_IS_PAGE_WIDGET(widget), NULL);
   ZathuraPageWidgetPrivate* priv = zathura_page_widget_get_instance_private(widget);
 
   return priv->selection.list;
 }
 
 bool zathura_page_widget_get_selection_bounds(ZathuraPageWidget* widget, zathura_rectangle_t* rect) {
-  g_return_val_if_fail(ZATHURA_IS_PAGE(widget), false);
+  g_return_val_if_fail(ZATHURA_IS_PAGE_WIDGET(widget), false);
   g_return_val_if_fail(rect != NULL, false);
   ZathuraPageWidgetPrivate* priv = zathura_page_widget_get_instance_private(widget);
 
@@ -1900,7 +1901,7 @@ bool zathura_page_widget_get_selection_bounds(ZathuraPageWidget* widget, zathura
 }
 
 void zathura_page_widget_set_highlights(ZathuraPageWidget* widget, girara_list_t* highlights) {
-  g_return_if_fail(ZATHURA_IS_PAGE(widget));
+  g_return_if_fail(ZATHURA_IS_PAGE_WIDGET(widget));
   ZathuraPageWidgetPrivate* priv = zathura_page_widget_get_instance_private(widget);
 
   /* Free old list if exists */
@@ -1921,7 +1922,7 @@ static void note_free_func(void* data) {
 }
 
 void zathura_page_widget_add_highlight(ZathuraPageWidget* widget, zathura_highlight_t* highlight) {
-  g_return_if_fail(ZATHURA_IS_PAGE(widget));
+  g_return_if_fail(ZATHURA_IS_PAGE_WIDGET(widget));
   g_return_if_fail(highlight != NULL);
   ZathuraPageWidgetPrivate* priv = zathura_page_widget_get_instance_private(widget);
 
@@ -1935,7 +1936,7 @@ void zathura_page_widget_add_highlight(ZathuraPageWidget* widget, zathura_highli
 }
 
 bool zathura_page_widget_remove_highlight(ZathuraPageWidget* widget, const char* highlight_id) {
-  g_return_val_if_fail(ZATHURA_IS_PAGE(widget), false);
+  g_return_val_if_fail(ZATHURA_IS_PAGE_WIDGET(widget), false);
   g_return_val_if_fail(highlight_id != NULL, false);
   ZathuraPageWidgetPrivate* priv = zathura_page_widget_get_instance_private(widget);
 
@@ -1956,13 +1957,13 @@ bool zathura_page_widget_remove_highlight(ZathuraPageWidget* widget, const char*
 }
 
 girara_list_t* zathura_page_widget_get_highlights(ZathuraPageWidget* widget) {
-  g_return_val_if_fail(ZATHURA_IS_PAGE(widget), NULL);
+  g_return_val_if_fail(ZATHURA_IS_PAGE_WIDGET(widget), NULL);
   ZathuraPageWidgetPrivate* priv = zathura_page_widget_get_instance_private(widget);
   return priv->highlights.list;
 }
 
 bool zathura_page_widget_get_last_click(ZathuraPageWidget* widget, double* x, double* y) {
-  g_return_val_if_fail(ZATHURA_IS_PAGE(widget), false);
+  g_return_val_if_fail(ZATHURA_IS_PAGE_WIDGET(widget), false);
   g_return_val_if_fail(x != NULL && y != NULL, false);
   ZathuraPageWidgetPrivate* priv = zathura_page_widget_get_instance_private(widget);
 
@@ -1976,13 +1977,13 @@ bool zathura_page_widget_get_last_click(ZathuraPageWidget* widget, double* x, do
 }
 
 const char* zathura_page_widget_get_selected_highlight_id(ZathuraPageWidget* widget) {
-  g_return_val_if_fail(ZATHURA_IS_PAGE(widget), NULL);
+  g_return_val_if_fail(ZATHURA_IS_PAGE_WIDGET(widget), NULL);
   ZathuraPageWidgetPrivate* priv = zathura_page_widget_get_instance_private(widget);
   return priv->highlights.selected_id;
 }
 
 void zathura_page_widget_clear_selected_highlight(ZathuraPageWidget* widget) {
-  g_return_if_fail(ZATHURA_IS_PAGE(widget));
+  g_return_if_fail(ZATHURA_IS_PAGE_WIDGET(widget));
   ZathuraPageWidgetPrivate* priv = zathura_page_widget_get_instance_private(widget);
   if (priv->highlights.selected_id != NULL) {
     g_free(priv->highlights.selected_id);
@@ -1996,13 +1997,13 @@ void zathura_page_widget_clear_selected_highlight(ZathuraPageWidget* widget) {
 }
 
 girara_list_t* zathura_page_widget_get_embedded_selected_rects(ZathuraPageWidget* widget) {
-  g_return_val_if_fail(ZATHURA_IS_PAGE(widget), NULL);
+  g_return_val_if_fail(ZATHURA_IS_PAGE_WIDGET(widget), NULL);
   ZathuraPageWidgetPrivate* priv = zathura_page_widget_get_instance_private(widget);
   return priv->highlights.embedded_selected_rects;
 }
 
 void zathura_page_widget_set_notes(ZathuraPageWidget* widget, girara_list_t* notes) {
-  g_return_if_fail(ZATHURA_IS_PAGE(widget));
+  g_return_if_fail(ZATHURA_IS_PAGE_WIDGET(widget));
   ZathuraPageWidgetPrivate* priv = zathura_page_widget_get_instance_private(widget);
 
   /* Free old list if exists */
@@ -2015,7 +2016,7 @@ void zathura_page_widget_set_notes(ZathuraPageWidget* widget, girara_list_t* not
 }
 
 void zathura_page_widget_add_note(ZathuraPageWidget* widget, zathura_note_t* note) {
-  g_return_if_fail(ZATHURA_IS_PAGE(widget));
+  g_return_if_fail(ZATHURA_IS_PAGE_WIDGET(widget));
   g_return_if_fail(note != NULL);
   ZathuraPageWidgetPrivate* priv = zathura_page_widget_get_instance_private(widget);
 
@@ -2029,7 +2030,7 @@ void zathura_page_widget_add_note(ZathuraPageWidget* widget, zathura_note_t* not
 }
 
 bool zathura_page_widget_remove_note(ZathuraPageWidget* widget, const char* note_id) {
-  g_return_val_if_fail(ZATHURA_IS_PAGE(widget), false);
+  g_return_val_if_fail(ZATHURA_IS_PAGE_WIDGET(widget), false);
   g_return_val_if_fail(note_id != NULL, false);
   ZathuraPageWidgetPrivate* priv = zathura_page_widget_get_instance_private(widget);
 
@@ -2050,13 +2051,13 @@ bool zathura_page_widget_remove_note(ZathuraPageWidget* widget, const char* note
 }
 
 girara_list_t* zathura_page_widget_get_notes(ZathuraPageWidget* widget) {
-  g_return_val_if_fail(ZATHURA_IS_PAGE(widget), NULL);
+  g_return_val_if_fail(ZATHURA_IS_PAGE_WIDGET(widget), NULL);
   ZathuraPageWidgetPrivate* priv = zathura_page_widget_get_instance_private(widget);
   return priv->notes.list;
 }
 
 gboolean zathura_page_widget_get_embedded_note_selection(ZathuraPageWidget* widget, double* x, double* y) {
-  g_return_val_if_fail(ZATHURA_IS_PAGE(widget), FALSE);
+  g_return_val_if_fail(ZATHURA_IS_PAGE_WIDGET(widget), FALSE);
   ZathuraPageWidgetPrivate* priv = zathura_page_widget_get_instance_private(widget);
 
   if (!priv->embedded_notes.has_selection) {
@@ -2073,7 +2074,7 @@ gboolean zathura_page_widget_get_embedded_note_selection(ZathuraPageWidget* widg
 }
 
 void zathura_page_widget_clear_embedded_note_selection(ZathuraPageWidget* widget) {
-  g_return_if_fail(ZATHURA_IS_PAGE(widget));
+  g_return_if_fail(ZATHURA_IS_PAGE_WIDGET(widget));
   ZathuraPageWidgetPrivate* priv = zathura_page_widget_get_instance_private(widget);
 
   if (priv->embedded_notes.has_selection) {
@@ -2083,7 +2084,7 @@ void zathura_page_widget_clear_embedded_note_selection(ZathuraPageWidget* widget
 }
 
 void zathura_page_widget_refresh_embedded_notes(ZathuraPageWidget* widget) {
-  g_return_if_fail(ZATHURA_IS_PAGE(widget));
+  g_return_if_fail(ZATHURA_IS_PAGE_WIDGET(widget));
   ZathuraPageWidgetPrivate* priv = zathura_page_widget_get_instance_private(widget);
 
   /* Clear pending popup pointer before freeing list (avoid dangling pointer) */

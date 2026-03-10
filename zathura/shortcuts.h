@@ -4,6 +4,10 @@
 #define SHORTCUTS_H
 
 #include <girara-gtk/types.h>
+#include <gtk/gtk.h>
+
+typedef struct zathura_s zathura_t;
+typedef struct zathura_note_s zathura_note_t;
 
 /**
  * Abort the current action and return to normal mode
