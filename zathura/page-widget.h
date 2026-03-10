@@ -96,7 +96,7 @@ zathura_page_t* zathura_page_widget_get_page(ZathuraPageWidget* widget);
  * @param widget the widget
  * @return list of selection rectangles or NULL
  */
-girara_list_t* zathura_page_widget_get_selection(ZathuraPage* widget);
+girara_list_t* zathura_page_widget_get_selection(ZathuraPageWidget* widget);
 
 /**
  * Get selection bounds (mouse selection rectangle)
@@ -105,7 +105,7 @@ girara_list_t* zathura_page_widget_get_selection(ZathuraPage* widget);
  * @param rect output rectangle
  * @return true if there's a valid selection
  */
-bool zathura_page_widget_get_selection_bounds(ZathuraPage* widget, zathura_rectangle_t* rect);
+bool zathura_page_widget_get_selection_bounds(ZathuraPageWidget* widget, zathura_rectangle_t* rect);
 
 /**
  * Set persistent highlights for this page
@@ -113,7 +113,7 @@ bool zathura_page_widget_get_selection_bounds(ZathuraPage* widget, zathura_recta
  * @param widget the widget
  * @param highlights list of zathura_highlight_t* (ownership NOT transferred)
  */
-void zathura_page_widget_set_highlights(ZathuraPage* widget, girara_list_t* highlights);
+void zathura_page_widget_set_highlights(ZathuraPageWidget* widget, girara_list_t* highlights);
 
 /**
  * Add a single highlight to this page (takes ownership)
@@ -121,7 +121,7 @@ void zathura_page_widget_set_highlights(ZathuraPage* widget, girara_list_t* high
  * @param widget the widget
  * @param highlight the highlight to add (ownership transferred)
  */
-void zathura_page_widget_add_highlight(ZathuraPage* widget, zathura_highlight_t* highlight);
+void zathura_page_widget_add_highlight(ZathuraPageWidget* widget, zathura_highlight_t* highlight);
 
 /**
  * Remove a highlight from this page by ID
@@ -130,7 +130,7 @@ void zathura_page_widget_add_highlight(ZathuraPage* widget, zathura_highlight_t*
  * @param highlight_id the unique identifier of the highlight to remove
  * @return true if highlight was found and removed, false otherwise
  */
-bool zathura_page_widget_remove_highlight(ZathuraPage* widget, const char* highlight_id);
+bool zathura_page_widget_remove_highlight(ZathuraPageWidget* widget, const char* highlight_id);
 
 /**
  * Get highlights for this page
@@ -138,7 +138,7 @@ bool zathura_page_widget_remove_highlight(ZathuraPage* widget, const char* highl
  * @param widget the widget
  * @return list of zathura_highlight_t* or NULL if no highlights
  */
-girara_list_t* zathura_page_widget_get_highlights(ZathuraPage* widget);
+girara_list_t* zathura_page_widget_get_highlights(ZathuraPageWidget* widget);
 
 /**
  * Get last click position (persists after button release)
@@ -148,7 +148,7 @@ girara_list_t* zathura_page_widget_get_highlights(ZathuraPage* widget);
  * @param y output y position
  * @return true if there's a valid last click position
  */
-bool zathura_page_widget_get_last_click(ZathuraPage* widget, double* x, double* y);
+bool zathura_page_widget_get_last_click(ZathuraPageWidget* widget, double* x, double* y);
 
 /**
  * Get the ID of the currently selected highlight
@@ -156,14 +156,14 @@ bool zathura_page_widget_get_last_click(ZathuraPage* widget, double* x, double* 
  * @param widget the widget
  * @return highlight ID or NULL if none selected
  */
-const char* zathura_page_widget_get_selected_highlight_id(ZathuraPage* widget);
+const char* zathura_page_widget_get_selected_highlight_id(ZathuraPageWidget* widget);
 
 /**
  * Clear the selected highlight
  *
  * @param widget the widget
  */
-void zathura_page_widget_clear_selected_highlight(ZathuraPage* widget);
+void zathura_page_widget_clear_selected_highlight(ZathuraPageWidget* widget);
 
 /**
  * Get the rectangles of the currently selected embedded annotation
@@ -171,7 +171,7 @@ void zathura_page_widget_clear_selected_highlight(ZathuraPage* widget);
  * @param widget the widget
  * @return list of rectangles or NULL if no embedded annotation selected
  */
-girara_list_t* zathura_page_widget_get_embedded_selected_rects(ZathuraPage* widget);
+girara_list_t* zathura_page_widget_get_embedded_selected_rects(ZathuraPageWidget* widget);
 
 /**
  * Note icon size in pixels
@@ -184,7 +184,7 @@ girara_list_t* zathura_page_widget_get_embedded_selected_rects(ZathuraPage* widg
  * @param widget the widget
  * @param notes list of zathura_note_t* (ownership transferred)
  */
-void zathura_page_widget_set_notes(ZathuraPage* widget, girara_list_t* notes);
+void zathura_page_widget_set_notes(ZathuraPageWidget* widget, girara_list_t* notes);
 
 /**
  * Add a single note to this page (takes ownership)
@@ -192,7 +192,7 @@ void zathura_page_widget_set_notes(ZathuraPage* widget, girara_list_t* notes);
  * @param widget the widget
  * @param note the note to add (ownership transferred)
  */
-void zathura_page_widget_add_note(ZathuraPage* widget, zathura_note_t* note);
+void zathura_page_widget_add_note(ZathuraPageWidget* widget, zathura_note_t* note);
 
 /**
  * Remove a note from this page by ID
@@ -201,7 +201,7 @@ void zathura_page_widget_add_note(ZathuraPage* widget, zathura_note_t* note);
  * @param note_id the unique identifier of the note to remove
  * @return true if note was found and removed, false otherwise
  */
-bool zathura_page_widget_remove_note(ZathuraPage* widget, const char* note_id);
+bool zathura_page_widget_remove_note(ZathuraPageWidget* widget, const char* note_id);
 
 /**
  * Get notes for this page
@@ -209,7 +209,7 @@ bool zathura_page_widget_remove_note(ZathuraPage* widget, const char* note_id);
  * @param widget the widget
  * @return list of zathura_note_t* or NULL if no notes
  */
-girara_list_t* zathura_page_widget_get_notes(ZathuraPage* widget);
+girara_list_t* zathura_page_widget_get_notes(ZathuraPageWidget* widget);
 
 /**
  * Get embedded note selection coordinates
@@ -219,14 +219,14 @@ girara_list_t* zathura_page_widget_get_notes(ZathuraPage* widget);
  * @param y pointer to store y coordinate (can be NULL)
  * @return TRUE if an embedded note is selected, FALSE otherwise
  */
-gboolean zathura_page_widget_get_embedded_note_selection(ZathuraPage* widget, double* x, double* y);
+gboolean zathura_page_widget_get_embedded_note_selection(ZathuraPageWidget* widget, double* x, double* y);
 
 /**
  * Clear embedded note selection
  *
  * @param widget the widget
  */
-void zathura_page_widget_clear_embedded_note_selection(ZathuraPage* widget);
+void zathura_page_widget_clear_embedded_note_selection(ZathuraPageWidget* widget);
 
 /**
  * Refresh cached embedded notes list from the PDF
@@ -234,6 +234,6 @@ void zathura_page_widget_clear_embedded_note_selection(ZathuraPage* widget);
  *
  * @param widget the widget
  */
-void zathura_page_widget_refresh_embedded_notes(ZathuraPage* widget);
+void zathura_page_widget_refresh_embedded_notes(ZathuraPageWidget* widget);
 
 #endif

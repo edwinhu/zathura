@@ -164,11 +164,12 @@ static bool highlight_exists(girara_list_t* existing, zathura_highlight_t* hl) {
   if (existing == NULL || hl == NULL) {
     return false;
   }
-  GIRARA_LIST_FOREACH_BODY(existing, zathura_highlight_t*, existing_hl,
+  for (size_t _fi0 = 0; _fi0 < girara_list_size(existing); _fi0++) {
+    zathura_highlight_t* existing_hl = girara_list_nth(existing, _fi0);
     if (existing_hl->page == hl->page && rects_match(existing_hl->rects, hl->rects)) {
       return true;
     }
-  );
+  }
   return false;
 }
 
@@ -207,7 +208,8 @@ bool cmd_highlights_import(girara_session_t* session, girara_list_t* GIRARA_UNUS
       continue;
     }
 
-    GIRARA_LIST_FOREACH_BODY(annotations, zathura_highlight_t*, hl,
+    for (size_t _fi1 = 0; _fi1 < girara_list_size(annotations); _fi1++) {
+      zathura_highlight_t* hl = girara_list_nth(annotations, _fi1);
       if (hl != NULL) {
         /* Skip if highlight with same geometry already exists */
         if (highlight_exists(existing_highlights, hl)) {
@@ -221,11 +223,11 @@ bool cmd_highlights_import(girara_session_t* session, girara_list_t* GIRARA_UNUS
         // Add to page widget for immediate display - widget takes ownership
         GtkWidget* page_widget = zathura_page_get_widget(zathura, page);
         if (page_widget != NULL) {
-          zathura_page_widget_add_highlight(ZATHURA_PAGE(page_widget), hl);
+          zathura_page_widget_add_highlight(ZATHURA_PAGE_WIDGET(page_widget), hl);
         }
         imported++;
       }
-    );
+    }
     /* Clear free function before freeing list - widget now owns the highlights */
     girara_list_set_free_function(annotations, NULL);
     girara_list_free(annotations);
@@ -287,7 +289,8 @@ bool cmd_highlights_export(girara_session_t* session, girara_list_t* argument_li
   girara_list_t* to_export = girara_list_new();
   unsigned int skipped = 0;
 
-  GIRARA_LIST_FOREACH_BODY(highlights, zathura_highlight_t*, hl,
+  for (size_t _fi2 = 0; _fi2 < girara_list_size(highlights); _fi2++) {
+    zathura_highlight_t* hl = girara_list_nth(highlights, _fi2);
     unsigned int page_id = hl->page;
     if (page_id < num_pages && existing_by_page[page_id] != NULL) {
       if (highlight_exists(existing_by_page[page_id], hl)) {
@@ -296,7 +299,7 @@ bool cmd_highlights_export(girara_session_t* session, girara_list_t* argument_li
       }
     }
     girara_list_append(to_export, hl);
-  );
+  }
 
   /* Export highlights page by page */
   unsigned int exported = 0;
@@ -304,11 +307,12 @@ bool cmd_highlights_export(girara_session_t* session, girara_list_t* argument_li
     /* Get highlights for this page */
     girara_list_t* page_highlights = girara_list_new();
 
-    GIRARA_LIST_FOREACH_BODY(to_export, zathura_highlight_t*, hl,
+    for (size_t _fi3 = 0; _fi3 < girara_list_size(to_export); _fi3++) {
+      zathura_highlight_t* hl = girara_list_nth(to_export, _fi3);
       if (hl->page == page_id) {
         girara_list_append(page_highlights, hl);
       }
-    );
+    }
 
     if (girara_list_size(page_highlights) > 0) {
       zathura_page_t* page = zathura_document_get_page(zathura->document, page_id);
@@ -354,13 +358,14 @@ static bool note_exists(girara_list_t* existing, zathura_note_t* note) {
     return false;
   }
   const double eps = 1.0; /* Tolerance for position matching */
-  GIRARA_LIST_FOREACH_BODY(existing, zathura_note_t*, existing_note,
+  for (size_t _fi4 = 0; _fi4 < girara_list_size(existing); _fi4++) {
+    zathura_note_t* existing_note = girara_list_nth(existing, _fi4);
     if (existing_note->page == note->page &&
         fabs(existing_note->x - note->x) < eps &&
         fabs(existing_note->y - note->y) < eps) {
       return true;
     }
-  );
+  }
   return false;
 }
 
@@ -401,7 +406,8 @@ bool cmd_annot_import(girara_session_t* session, girara_list_t* GIRARA_UNUSED(ar
     girara_list_t* annotations = zathura_page_get_annotations(page, NULL);
     girara_debug("Page %u: got %zu highlight annotations", page_id, annotations ? girara_list_size(annotations) : 0);
     if (annotations != NULL) {
-      GIRARA_LIST_FOREACH_BODY(annotations, zathura_highlight_t*, hl,
+      for (size_t _fi5 = 0; _fi5 < girara_list_size(annotations); _fi5++) {
+        zathura_highlight_t* hl = girara_list_nth(annotations, _fi5);
         if (hl != NULL) {
           /* Skip if highlight with same geometry already exists */
           if (highlight_exists(existing_highlights, hl)) {
@@ -415,11 +421,11 @@ bool cmd_annot_import(girara_session_t* session, girara_list_t* GIRARA_UNUSED(ar
           /* Add to page widget for immediate display - widget takes ownership */
           GtkWidget* page_widget = zathura_page_get_widget(zathura, page);
           if (page_widget != NULL) {
-            zathura_page_widget_add_highlight(ZATHURA_PAGE(page_widget), hl);
+            zathura_page_widget_add_highlight(ZATHURA_PAGE_WIDGET(page_widget), hl);
           }
           imported_highlights++;
         }
-      );
+      }
       /* Clear free function before freeing list - widget now owns the highlights */
       girara_list_set_free_function(annotations, NULL);
       girara_list_free(annotations);
@@ -429,7 +435,8 @@ bool cmd_annot_import(girara_session_t* session, girara_list_t* GIRARA_UNUSED(ar
     girara_list_t* pdf_notes = zathura_page_get_notes(page, NULL);
     girara_debug("Page %u: got %zu note annotations", page_id, pdf_notes ? girara_list_size(pdf_notes) : 0);
     if (pdf_notes != NULL) {
-      GIRARA_LIST_FOREACH_BODY(pdf_notes, zathura_note_t*, note,
+      for (size_t _fi6 = 0; _fi6 < girara_list_size(pdf_notes); _fi6++) {
+        zathura_note_t* note = girara_list_nth(pdf_notes, _fi6);
         if (note != NULL) {
           /* Skip if note at same position already exists */
           if (note_exists(existing_notes, note)) {
@@ -443,11 +450,11 @@ bool cmd_annot_import(girara_session_t* session, girara_list_t* GIRARA_UNUSED(ar
           /* Add to page widget for immediate display - widget takes ownership */
           GtkWidget* page_widget = zathura_page_get_widget(zathura, page);
           if (page_widget != NULL) {
-            zathura_page_widget_add_note(ZATHURA_PAGE(page_widget), note);
+            zathura_page_widget_add_note(ZATHURA_PAGE_WIDGET(page_widget), note);
           }
           imported_notes++;
         }
-      );
+      }
       /* Clear free function before freeing list - widget now owns the notes */
       girara_list_set_free_function(pdf_notes, NULL);
       girara_list_free(pdf_notes);
@@ -525,7 +532,8 @@ bool cmd_annot_export(girara_session_t* session, girara_list_t* argument_list) {
   unsigned int highlights_skipped = 0;
 
   if (highlights != NULL) {
-    GIRARA_LIST_FOREACH_BODY(highlights, zathura_highlight_t*, hl,
+    for (size_t _fi7 = 0; _fi7 < girara_list_size(highlights); _fi7++) {
+      zathura_highlight_t* hl = girara_list_nth(highlights, _fi7);
       unsigned int page_id = hl->page;
       if (page_id < num_pages && existing_highlights_by_page[page_id] != NULL) {
         if (highlight_exists(existing_highlights_by_page[page_id], hl)) {
@@ -534,7 +542,7 @@ bool cmd_annot_export(girara_session_t* session, girara_list_t* argument_list) {
         }
       }
       girara_list_append(highlights_to_export, hl);
-    );
+    }
   }
 
   /* Filter notes to only those not already in PDF */
@@ -542,7 +550,8 @@ bool cmd_annot_export(girara_session_t* session, girara_list_t* argument_list) {
   unsigned int notes_skipped = 0;
 
   if (notes != NULL) {
-    GIRARA_LIST_FOREACH_BODY(notes, zathura_note_t*, note,
+    for (size_t _fi8 = 0; _fi8 < girara_list_size(notes); _fi8++) {
+      zathura_note_t* note = girara_list_nth(notes, _fi8);
       unsigned int page_id = note->page;
       if (page_id < num_pages && existing_notes_by_page[page_id] != NULL) {
         if (note_exists(existing_notes_by_page[page_id], note)) {
@@ -551,7 +560,7 @@ bool cmd_annot_export(girara_session_t* session, girara_list_t* argument_list) {
         }
       }
       girara_list_append(notes_to_export, note);
-    );
+    }
   }
 
   /* Export highlights and notes page by page */
@@ -564,11 +573,12 @@ bool cmd_annot_export(girara_session_t* session, girara_list_t* argument_list) {
 
     /* Export highlights for this page */
     girara_list_t* page_highlights = girara_list_new();
-    GIRARA_LIST_FOREACH_BODY(highlights_to_export, zathura_highlight_t*, hl,
+    for (size_t _fi9 = 0; _fi9 < girara_list_size(highlights_to_export); _fi9++) {
+      zathura_highlight_t* hl = girara_list_nth(highlights_to_export, _fi9);
       if (hl->page == page_id) {
         girara_list_append(page_highlights, hl);
       }
-    );
+    }
 
     if (girara_list_size(page_highlights) > 0) {
       zathura_error_t error = zathura_page_export_annotations(page, page_highlights);
@@ -581,11 +591,12 @@ bool cmd_annot_export(girara_session_t* session, girara_list_t* argument_list) {
 
     /* Export notes for this page */
     girara_list_t* page_notes = girara_list_new();
-    GIRARA_LIST_FOREACH_BODY(notes_to_export, zathura_note_t*, note,
+    for (size_t _fi10 = 0; _fi10 < girara_list_size(notes_to_export); _fi10++) {
+      zathura_note_t* note = girara_list_nth(notes_to_export, _fi10);
       if (note->page == page_id) {
         girara_list_append(page_notes, note);
       }
-    );
+    }
 
     if (girara_list_size(page_notes) > 0) {
       zathura_error_t error = zathura_page_export_notes(page, page_notes);
@@ -670,13 +681,14 @@ bool cmd_readwise_sync(girara_session_t* session, girara_list_t* GIRARA_UNUSED(a
 
   girara_list_t* info = zathura_document_get_information(zathura->document, NULL);
   if (info != NULL) {
-    GIRARA_LIST_FOREACH_BODY(info, zathura_document_information_entry_t*, entry,
+    for (size_t _fi11 = 0; _fi11 < girara_list_size(info); _fi11++) {
+      zathura_document_information_entry_t* entry = girara_list_nth(info, _fi11);
       if (entry->type == ZATHURA_DOCUMENT_INFORMATION_TITLE && entry->value != NULL) {
         title = entry->value;
       } else if (entry->type == ZATHURA_DOCUMENT_INFORMATION_AUTHOR && entry->value != NULL) {
         author = entry->value;
       }
-    );
+    }
   }
 
   /* Fallback to filename if no title */

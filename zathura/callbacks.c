@@ -419,7 +419,7 @@ gboolean cb_highlights_key_press(GtkWidget* widget, GdkEventKey* event, void* da
         if (page != NULL) {
           GtkWidget* page_widget = zathura_page_get_widget(zathura, page);
           if (page_widget != NULL) {
-            zathura_page_widget_remove_highlight(ZATHURA_PAGE(page_widget), id_copy);
+            zathura_page_widget_remove_highlight(ZATHURA_PAGE_WIDGET(page_widget), id_copy);
           }
         }
         // Refresh panel by hiding and showing
@@ -442,13 +442,14 @@ gboolean cb_highlights_key_press(GtkWidget* widget, GdkEventKey* event, void* da
       if (page != NULL) {
         GtkWidget* page_widget = zathura_page_get_widget(zathura, page);
         if (page_widget != NULL) {
-          girara_list_t* page_highlights = zathura_page_widget_get_highlights(ZATHURA_PAGE(page_widget));
+          girara_list_t* page_highlights = zathura_page_widget_get_highlights(ZATHURA_PAGE_WIDGET(page_widget));
           if (page_highlights != NULL) {
-            GIRARA_LIST_FOREACH_BODY(page_highlights, zathura_highlight_t*, h,
+            for (size_t _fi0 = 0; _fi0 < girara_list_size(page_highlights); _fi0++) {
+              zathura_highlight_t* h = girara_list_nth(page_highlights, _fi0);
               if (h->id != NULL && highlight->id != NULL && g_strcmp0(h->id, highlight->id) == 0) {
                 h->color = new_color;
               }
-            );
+            }
           }
           gtk_widget_queue_draw(page_widget);  // Trigger redraw with new color
         }
@@ -578,7 +579,7 @@ gboolean cb_notes_key_press(GtkWidget* widget, GdkEventKey* event, void* data) {
         if (page != NULL) {
           GtkWidget* page_widget = zathura_page_get_widget(zathura, page);
           if (page_widget != NULL) {
-            zathura_page_widget_remove_note(ZATHURA_PAGE(page_widget), id_copy);
+            zathura_page_widget_remove_note(ZATHURA_PAGE_WIDGET(page_widget), id_copy);
             gtk_widget_queue_draw(page_widget);
           }
 

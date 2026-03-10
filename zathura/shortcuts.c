@@ -1446,7 +1446,8 @@ refresh_and_show:
 
   if (highlights != NULL) {
     const char* color_names[] = {"Y", "G", "B", "R"};
-    GIRARA_LIST_FOREACH_BODY(highlights, zathura_highlight_t*, highlight,
+    for (size_t _fi0 = 0; _fi0 < girara_list_size(highlights); _fi0++) {
+      zathura_highlight_t* highlight = girara_list_nth(highlights, _fi0);
       GtkTreeIter iter;
       gtk_list_store_append(store, &iter);
 
@@ -1461,7 +1462,7 @@ refresh_and_show:
           3, highlight,
           -1);
       g_free(page_str);
-    );
+    }
   }
 
   // Show panel and focus search
@@ -1894,7 +1895,7 @@ bool sc_highlight(girara_session_t* session, girara_argument_t* argument, girara
   }
 
   /* Get selection rectangles */
-  girara_list_t* selection_list = zathura_page_widget_get_selection(ZATHURA_PAGE(page_widget));
+  girara_list_t* selection_list = zathura_page_widget_get_selection(ZATHURA_PAGE_WIDGET(page_widget));
   if (selection_list == NULL || girara_list_size(selection_list) == 0) {
     girara_notify(session, GIRARA_WARNING, _("No text selected."));
     return false;
@@ -1955,10 +1956,10 @@ bool sc_highlight(girara_session_t* session, girara_argument_t* argument, girara
   }
 
   /* Add highlight to page widget (transfers ownership) */
-  zathura_page_widget_add_highlight(ZATHURA_PAGE(page_widget), highlight);
+  zathura_page_widget_add_highlight(ZATHURA_PAGE_WIDGET(page_widget), highlight);
 
   /* Clear selection */
-  zathura_page_widget_clear_selection(ZATHURA_PAGE(page_widget));
+  zathura_page_widget_clear_selection(ZATHURA_PAGE_WIDGET(page_widget));
 
   /* Notify success */
   const char* color_names[] = {"yellow", "green", "blue", "red"};
@@ -1993,7 +1994,7 @@ bool sc_delete_highlight(girara_session_t* session, girara_argument_t* UNUSED(ar
     }
 
     /* Check if this page has a selected highlight */
-    const char* selected_id = zathura_page_widget_get_selected_highlight_id(ZATHURA_PAGE(page_widget));
+    const char* selected_id = zathura_page_widget_get_selected_highlight_id(ZATHURA_PAGE_WIDGET(page_widget));
     if (selected_id == NULL) {
       continue;
     }
@@ -2005,9 +2006,10 @@ bool sc_delete_highlight(girara_session_t* session, girara_argument_t* UNUSED(ar
 
     /* Get highlight rects before deletion for embedded matching */
     girara_list_t* target_rects = NULL;
-    girara_list_t* all_highlights = zathura_page_widget_get_highlights(ZATHURA_PAGE(page_widget));
+    girara_list_t* all_highlights = zathura_page_widget_get_highlights(ZATHURA_PAGE_WIDGET(page_widget));
     if (all_highlights != NULL) {
-      GIRARA_LIST_FOREACH_BODY(all_highlights, zathura_highlight_t*, hl,
+      for (size_t _fi1 = 0; _fi1 < girara_list_size(all_highlights); _fi1++) {
+        zathura_highlight_t* hl = girara_list_nth(all_highlights, _fi1);
         if (hl != NULL && hl->id != NULL && g_strcmp0(hl->id, id_copy) == 0) {
           /* Found target highlight - copy its rects for later matching */
           if (hl->rects != NULL && girara_list_size(hl->rects) > 0) {
@@ -2023,7 +2025,7 @@ bool sc_delete_highlight(girara_session_t* session, girara_argument_t* UNUSED(ar
           }
           break;
         }
-      );
+      }
     }
 
     const char* file_path = zathura_document_get_path(zathura->document);
@@ -2033,8 +2035,8 @@ bool sc_delete_highlight(girara_session_t* session, girara_argument_t* UNUSED(ar
     }
 
     /* Clear selection and remove from widget */
-    zathura_page_widget_clear_selected_highlight(ZATHURA_PAGE(page_widget));
-    bool removed = zathura_page_widget_remove_highlight(ZATHURA_PAGE(page_widget), id_copy);
+    zathura_page_widget_clear_selected_highlight(ZATHURA_PAGE_WIDGET(page_widget));
+    bool removed = zathura_page_widget_remove_highlight(ZATHURA_PAGE_WIDGET(page_widget), id_copy);
     girara_debug("Remove from widget returned: %s", removed ? "true" : "false");
 
     g_free(id_copy);
@@ -2044,7 +2046,8 @@ bool sc_delete_highlight(girara_session_t* session, girara_argument_t* UNUSED(ar
       girara_list_t* embedded = zathura_page_get_annotations(page, NULL);
       if (embedded != NULL) {
         bool found_match = false;
-        GIRARA_LIST_FOREACH_BODY(embedded, zathura_highlight_t*, emb_hl,
+        for (size_t _fi2 = 0; _fi2 < girara_list_size(embedded); _fi2++) {
+          zathura_highlight_t* emb_hl = girara_list_nth(embedded, _fi2);
           if (emb_hl != NULL && emb_hl->rects != NULL &&
               highlights_geometry_match(target_rects, emb_hl->rects)) {
             /* Found matching embedded - set up confirmation */
@@ -2064,7 +2067,7 @@ bool sc_delete_highlight(girara_session_t* session, girara_argument_t* UNUSED(ar
             found_match = true;
             break;
           }
-        );
+        }
         girara_list_free(embedded);
         if (found_match) {
           girara_list_free(target_rects);
@@ -2090,7 +2093,7 @@ bool sc_delete_highlight(girara_session_t* session, girara_argument_t* UNUSED(ar
       continue;
     }
 
-    girara_list_t* embedded_rects = zathura_page_widget_get_embedded_selected_rects(ZATHURA_PAGE(page_widget));
+    girara_list_t* embedded_rects = zathura_page_widget_get_embedded_selected_rects(ZATHURA_PAGE_WIDGET(page_widget));
     if (embedded_rects != NULL && girara_list_size(embedded_rects) > 0) {
       /* Store pending delete state for confirmation */
       zathura->global.embedded_delete_pending = true;
@@ -2117,7 +2120,7 @@ bool sc_delete_highlight(girara_session_t* session, girara_argument_t* UNUSED(ar
 
     /* Also check for embedded PDF note selection */
     double note_x, note_y;
-    if (zathura_page_widget_get_embedded_note_selection(ZATHURA_PAGE(page_widget), &note_x, &note_y)) {
+    if (zathura_page_widget_get_embedded_note_selection(ZATHURA_PAGE_WIDGET(page_widget), &note_x, &note_y)) {
       /* Store pending delete state for confirmation */
       zathura->global.embedded_note_delete_pending = true;
       zathura->global.embedded_note_delete_page = page_id;
@@ -2197,7 +2200,7 @@ bool sc_confirm_embedded_delete(girara_session_t* session, girara_argument_t* UN
     /* Clear selection and pending state */
     GtkWidget* page_widget = zathura_page_get_widget(zathura, page);
     if (page_widget != NULL) {
-      zathura_page_widget_clear_embedded_note_selection(ZATHURA_PAGE(page_widget));
+      zathura_page_widget_clear_embedded_note_selection(ZATHURA_PAGE_WIDGET(page_widget));
     }
 
     zathura->global.embedded_note_delete_pending = false;
@@ -2240,16 +2243,17 @@ bool sc_confirm_embedded_delete(girara_session_t* session, girara_argument_t* UN
     if (zathura->database != NULL && file_path != NULL) {
       girara_list_t* db_highlights = zathura_db_load_highlights(zathura->database, file_path);
       if (db_highlights != NULL) {
-        GIRARA_LIST_FOREACH_BODY(db_highlights, zathura_highlight_t*, hl,
+        for (size_t _fi3 = 0; _fi3 < girara_list_size(db_highlights); _fi3++) {
+          zathura_highlight_t* hl = girara_list_nth(db_highlights, _fi3);
           if (hl->page == page_id && highlights_geometry_match(hl->rects, rects)) {
             zathura_db_remove_highlight(zathura->database, file_path, hl->id);
             /* Also remove from page widget */
             GtkWidget* page_widget = zathura_page_get_widget(zathura, page);
             if (page_widget != NULL) {
-              zathura_page_widget_remove_highlight(ZATHURA_PAGE(page_widget), hl->id);
+              zathura_page_widget_remove_highlight(ZATHURA_PAGE_WIDGET(page_widget), hl->id);
             }
           }
-        );
+        }
         girara_list_free(db_highlights);
       }
     }
@@ -2260,7 +2264,7 @@ bool sc_confirm_embedded_delete(girara_session_t* session, girara_argument_t* UN
   /* Clear selection and pending state */
   GtkWidget* page_widget = zathura_page_get_widget(zathura, page);
   if (page_widget != NULL) {
-    zathura_page_widget_clear_selected_highlight(ZATHURA_PAGE(page_widget));
+    zathura_page_widget_clear_selected_highlight(ZATHURA_PAGE_WIDGET(page_widget));
   }
 
   /* Clean up pending state */
@@ -2321,25 +2325,26 @@ bool sc_cycle_highlight_color(girara_session_t* session, girara_argument_t* UNUS
     }
 
     /* Check if this page has a selected highlight */
-    const char* selected_id = zathura_page_widget_get_selected_highlight_id(ZATHURA_PAGE(page_widget));
+    const char* selected_id = zathura_page_widget_get_selected_highlight_id(ZATHURA_PAGE_WIDGET(page_widget));
     if (selected_id == NULL) {
       continue;
     }
 
     /* Found a page with selected highlight - cycle its color */
-    girara_list_t* highlights = zathura_page_widget_get_highlights(ZATHURA_PAGE(page_widget));
+    girara_list_t* highlights = zathura_page_widget_get_highlights(ZATHURA_PAGE_WIDGET(page_widget));
     if (highlights == NULL) {
       continue;
     }
 
     /* Find the highlight by ID and cycle its color */
     zathura_highlight_t* target_highlight = NULL;
-    GIRARA_LIST_FOREACH_BODY(highlights, zathura_highlight_t*, highlight,
+    for (size_t _fi4 = 0; _fi4 < girara_list_size(highlights); _fi4++) {
+      zathura_highlight_t* highlight = girara_list_nth(highlights, _fi4);
       if (highlight->id != NULL && g_strcmp0(highlight->id, selected_id) == 0) {
         target_highlight = highlight;
         break;
       }
-    );
+    }
 
     if (target_highlight == NULL) {
       continue;
@@ -2761,7 +2766,7 @@ static void note_save_callback(zathura_t* zathura, unsigned int page,
       /* Refresh embedded notes list to show updated content */
       GtkWidget* page_widget = zathura_page_get_widget(zathura, zpage);
       if (page_widget != NULL) {
-        zathura_page_widget_refresh_embedded_notes(ZATHURA_PAGE(page_widget));
+        zathura_page_widget_refresh_embedded_notes(ZATHURA_PAGE_WIDGET(page_widget));
         gtk_widget_queue_draw(page_widget);
       }
     } else if (err == ZATHURA_ERROR_NOT_IMPLEMENTED) {
@@ -2802,9 +2807,9 @@ static void note_save_callback(zathura_t* zathura, unsigned int page,
     if (page_widget != NULL) {
       /* If editing existing note, remove the old one from widget first */
       if (note_id != NULL) {
-        zathura_page_widget_remove_note(ZATHURA_PAGE(page_widget), note_id);
+        zathura_page_widget_remove_note(ZATHURA_PAGE_WIDGET(page_widget), note_id);
       }
-      zathura_page_widget_add_note(ZATHURA_PAGE(page_widget), note);
+      zathura_page_widget_add_note(ZATHURA_PAGE_WIDGET(page_widget), note);
     } else {
       zathura_note_free(note);
     }
@@ -2846,7 +2851,7 @@ static void note_delete_callback(zathura_t* zathura, unsigned int page,
 
       /* Refresh embedded notes list */
       if (page_widget != NULL) {
-        zathura_page_widget_refresh_embedded_notes(ZATHURA_PAGE(page_widget));
+        zathura_page_widget_refresh_embedded_notes(ZATHURA_PAGE_WIDGET(page_widget));
         gtk_widget_queue_draw(page_widget);
       }
     } else {
@@ -2858,7 +2863,7 @@ static void note_delete_callback(zathura_t* zathura, unsigned int page,
       const char* file_path = zathura_document_get_path(zathura->document);
       if (zathura_db_remove_note(zathura->database, file_path, note_id)) {
         if (page_widget != NULL) {
-          zathura_page_widget_remove_note(ZATHURA_PAGE(page_widget), note_id);
+          zathura_page_widget_remove_note(ZATHURA_PAGE_WIDGET(page_widget), note_id);
         }
         girara_notify(zathura->ui.session, GIRARA_INFO, _("Note deleted."));
       } else {
@@ -3113,7 +3118,8 @@ refresh_and_show:
   girara_list_t* notes = zathura_db_load_notes(zathura->database, file_path);
 
   if (notes != NULL) {
-    GIRARA_LIST_FOREACH_BODY(notes, zathura_note_t*, note,
+    for (size_t _fi5 = 0; _fi5 < girara_list_size(notes); _fi5++) {
+      zathura_note_t* note = girara_list_nth(notes, _fi5);
       GtkTreeIter iter;
       gtk_list_store_append(store, &iter);
 
@@ -3148,7 +3154,7 @@ refresh_and_show:
           -1);
       g_free(page_str);
       g_free(content_preview);
-    );
+    }
   }
 
   // Store the notes list on the widget so it gets freed on refresh/destroy

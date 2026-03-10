@@ -1244,7 +1244,7 @@ bool document_open(zathura_t* zathura, const char* path, const char* uri, const 
         /* Set highlights on page widgets */
         for (unsigned int i = 0; i < number_of_pages; i++) {
           if (page_highlights[i] != NULL) {
-            zathura_page_widget_set_highlights(ZATHURA_PAGE(zathura->pages[i]), page_highlights[i]);
+            zathura_page_widget_set_highlights(ZATHURA_PAGE_WIDGET(zathura->pages[i]), page_highlights[i]);
           }
         }
         g_free(page_highlights);
@@ -1278,7 +1278,7 @@ bool document_open(zathura_t* zathura, const char* path, const char* uri, const 
         /* Set notes on page widgets */
         for (unsigned int i = 0; i < number_of_pages; i++) {
           if (page_notes[i] != NULL) {
-            zathura_page_widget_set_notes(ZATHURA_PAGE(zathura->pages[i]), page_notes[i]);
+            zathura_page_widget_set_notes(ZATHURA_PAGE_WIDGET(zathura->pages[i]), page_notes[i]);
           }
         }
         g_free(page_notes);
